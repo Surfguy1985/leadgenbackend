@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { adminDb, currentUser } from "@/lib/supabase";
 import { env, missingEnv } from "@/lib/env";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 /** Stripe Billing Portal for the signed-in org owner (cancel, change card, invoices). */
-export async function POST() {
+export async function POST(req: Request) {
+  if (!rateLimit(`portal:${clientIp(req)}`, 10, 60_000)) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   const nc = missingEnv("STRIPE_SECRET_KEY"); if (nc) return nc;
   const u = await currentUser(); if (!u) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = adminDb();

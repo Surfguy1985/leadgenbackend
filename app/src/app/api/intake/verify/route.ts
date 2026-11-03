@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { adminDb, audit } from "@/lib/supabase";
-import { safeEqual } from "@/lib/rateLimit";
+import { safeEqual, clientIp, rateLimit } from "@/lib/rateLimit";
 import { verifyToken } from "@/lib/scope";
 
 export const runtime = "nodejs";
 
 /** Email-confirmation link (sent by WF-01). Marks the request email-verified; it still goes to moderation before publishing. */
 export async function GET(req: Request) {
+  if (!rateLimit(`verify:${clientIp(req)}`, 20, 60_000)) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   const url = new URL(req.url);
   const id = z.string().uuid().safeParse(url.searchParams.get("id"));
   const t = url.searchParams.get("t") ?? "";
