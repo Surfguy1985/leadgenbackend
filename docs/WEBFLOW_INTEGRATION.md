@@ -48,7 +48,7 @@ Required field `name`s (must match exactly): `name`, `email`, `phone` (optional)
   <label><input type="checkbox" name="consent_share" value="true" required>
     I agree to share this request and my contact details with up to 5 eligible, matched contractors through Archangel Advertising so they can contact me about this job. I can withdraw at any time. No contractor or outcome is guaranteed.</label>
   <label><input type="checkbox" name="consent_privacy" value="true" required> I have read the <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</label>
-  <div class="cf-turnstile" data-sitekey="YOUR_TURNSTILE_SITE_KEY"></div>
+  <div class="cf-turnstile" data-sitekey="0x4AAAAAAFykd3724PLNQGyS"></div>
   <button type="submit">Submit request</button>
   <p id="post-job-msg" role="status"></p>
 </form>
@@ -62,7 +62,7 @@ Required field `name`s (must match exactly): `name`, `email`, `phone` (optional)
     data.consent_share = f.consent_share.checked ? 'true' : 'false';
     data.consent_privacy = f.consent_privacy.checked ? 'true' : 'false';
     try {
-      var r = await fetch('https://app.your-domain.example/api/intake', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+      var r = await fetch('https://archangel-leadgen.vercel.app/api/intake', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
       var j = await r.json();
       m.textContent = r.ok ? (j.next || 'Thanks! Check your email.') : (j.issues ? j.issues.map(function(i){return i.message}).join(' ') : 'Something went wrong. Please try again.');
       if (r.ok) f.reset(); else if (window.turnstile) turnstile.reset();
