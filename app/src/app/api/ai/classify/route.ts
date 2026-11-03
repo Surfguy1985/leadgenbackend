@@ -15,6 +15,7 @@ const Body = z.object({
   source_kind: z.enum(["official_api","partner","direct","community_referral"]),
   has_consent: z.boolean().default(false),
   text: z.string().min(1).max(20000),
+  dry_run: z.boolean().default(false), // smoke tests: classify + review rules, no DB writes (audit_logs is append-only)
 });
 
 /** Server-to-server only (n8n WF-01/WF-02, /api/intake). Auth: x-shared-secret. */
@@ -24,13 +25,19 @@ export async function POST(req: Request) {
   const nc = missingEnv("XAI_API_KEY"); if (nc) return nc;
   const b = Body.safeParse(await req.json().catch(() => null));
   if (!b.success) return NextResponse.json({ error: "bad_request", issues: b.error.issues }, { status: 400 });
-  const { text, source_kind, has_consent, opportunity_id, raw_ingestion_id } = b.data;
+  const { text, source_kind, has_consent, opportunity_id, raw_ingestion_id, dry_run } = b.data;
 
   const r = await xaiStructured(Classification, "opportunity_classification", [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: `Source kind: ${source_kind}. Consent on file: ${has_consent}. Classify:\n${wrapUntrusted(text)}` },
   ]);
 
+  if (dry_run) {
+    if (!r.ok) return NextResponse.json({ ok: false, needs_review: true, error: r.error, dry_run: true });
+    const d = r.data; if (!has_consent) d.consent_status = "not_granted"; if (source_kind !== "official_api" && !has_consent) d.verification_status = "unverified";
+    const rr = reviewReasons(d, { sourceKind: source_kind, hasConsent: has_consent });
+    return NextResponse.json({ ok: true, dry_run: true, classification: d, needs_review: rr.length > 0, review_reasons: rr });
+  }
   const db = adminDb();
   if (!r.ok) {
     // malformed JSON / timeout / schema failure → human review, never dropped
