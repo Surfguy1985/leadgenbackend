@@ -1,5 +1,7 @@
 // Pure mappers from DB rows to Webflow CMS fieldData. Whitelist only — never contacts, owners, or private fields.
 export const OPP_LABEL: Record<string, string> = { public_bid: "Public bid (not exclusive)", discovery_signal: "Discovery signal (unverified)" };
+export const TRADE_LABEL: Record<string, string> = { cleaning: "Cleaning & janitorial", landscaping: "Landscaping & grounds", commercial_construction: "Commercial construction", hvac: "HVAC", plumbing: "Plumbing", electrical: "Electrical", roofing: "Roofing", painting: "Painting", flooring: "Flooring" };
+export const tradeLabel = (t: string) => TRADE_LABEL[t] ?? t.replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
 export function tabFor(listingType: string | null, kind: string): "jobs_now" | "upcoming" | "buyers" {
   if (listingType === "upcoming_forecast") return "upcoming";
   if (listingType === "buyer_prospect") return "buyers";
@@ -10,7 +12,7 @@ type Opp = { id: string; kind: string; listing_type?: string | null; title: stri
 export function oppFields(o: Opp) {
   return {
     name: o.title.slice(0, 256), slug: `${slugify(o.trade)}-${o.id.slice(0, 8)}`, "opportunity-id": o.id, summary: (o.summary ?? "").slice(0, 2000),
-    "kind-label": OPP_LABEL[o.kind] ?? o.kind, trade: o.trade, city: o.city ?? "", zip: o.zip ?? "",
+    "kind-label": OPP_LABEL[o.kind] ?? o.kind, trade: o.trade, "trade-label": tradeLabel(o.trade), city: o.city ?? "", zip: o.zip ?? "",
     deadline: o.deadline ?? null, "source-url": o.source_url ?? "", "published-date": o.published_at ?? null, "last-verified": o.last_verified_at ?? null,
     tab: tabFor(o.listing_type ?? null, o.kind), "listing-type": o.listing_type ?? o.kind, "geographic-scope": o.geographic_scope ?? "",
     "official-apply-url": o.official_apply_url ?? "", "last-checked": o.last_checked_at ?? o.last_verified_at ?? null,

@@ -7,6 +7,8 @@ export type SamNotice = {
 // Facility / construction NAICS relevant to Crewforthat trades
 const NAICS: [string, string][] = [["561730", "landscaping"], ["561720", "cleaning"], ["561790", "cleaning"], ["561210", "commercial_construction"], ["236", "commercial_construction"], ["237", "commercial_construction"], ["238", "commercial_construction"]];
 export const tradeForNaics = (n?: string) => (n ? NAICS.find(([p]) => n.startsWith(p))?.[1] : undefined) ?? null;
+/** Public (no-login) SAM.gov notice page. uiLink often points at the login-only /workspace/ view, so always build from noticeId. */
+export const samPublicUrl = (noticeId: string) => `https://sam.gov/opp/${encodeURIComponent(noticeId)}/view`;
 const SKIP_TYPES = /award notice|cancel|justification|sale of surplus|intent to bundle/i;
 
 export function samQuery(from: Date, to: Date, offset = 0, limit = 100) {
@@ -24,7 +26,7 @@ export function mapNotice(n: SamNotice, now = new Date()) {
   const trade = tradeForNaics(n.naicsCode); if (!trade) return null;
   const deadline = n.responseDeadLine ? new Date(n.responseDeadLine) : null;
   if (deadline && !isNaN(+deadline) && deadline < now) return null;
-  const ui = n.uiLink && /^https:\/\/sam\.gov\//.test(n.uiLink) ? n.uiLink : `https://sam.gov/opp/${encodeURIComponent(n.noticeId)}/view`;
+  const ui = samPublicUrl(n.noticeId);
   const agency = (n.fullParentPathName ?? "").split(".")[0]?.trim();
   const summary = [n.type, agency && `Agency: ${agency}`, n.naicsCode && `NAICS ${n.naicsCode}`, n.typeOfSetAsideDescription && `Set-aside: ${n.typeOfSetAsideDescription}`, n.solicitationNumber && `Solicitation ${n.solicitationNumber}`].filter(Boolean).join(" · ");
   return {
