@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## WF-02 SAM.gov Get Opportunities Public API\nGET https://api.sam.gov/opportunities/v2/search (postedFrom/postedTo MM/dd/yyyy, limit<=1000, offset). Filters: state=TX, property-service NAICS, place-of-performance ZIP3 in DFW.\nStores permitted metadata only + sha256 hash; unique (source_id, source_record_id[, hash]) prevents duplicates. Public bids are labeled non-exclusive and link to the original notice.\nSet env SAM_GOV_API_KEY, SAM_SOURCE_ID (row in sources). Daily request quota depends on SAM.gov account role.\nAdd Texas SmartBuy / city portals as separate branches only after terms review.",
+        "content": "## WF-02 SAM.gov Get Opportunities Public API\nGET https://api.sam.gov/opportunities/v2/search (postedFrom/postedTo MM/dd/yyyy, limit<=1000, offset). Filters: state=TX (all of Texas), property-service NAICS. Private leads remain a DFW pilot; public bids are statewide.\nStores permitted metadata only + sha256 hash; unique (source_id, source_record_id[, hash]) prevents duplicates. Public bids are labeled non-exclusive and link to the original notice.\nSet env SAM_GOV_API_KEY, SAM_SOURCE_ID (row in sources). Daily request quota depends on SAM.gov account role.\nAdd Texas SmartBuy / city portals as separate branches only after terms review.",
         "width": 520,
         "height": 260
       },
@@ -114,16 +114,16 @@
     },
     {
       "parameters": {
-        "jsCode": "\nconst crypto = require('crypto');\nconst DFW = ['750','751','752','753','760','761','762']; // DFW-area ZIP3 prefixes; tune in staging\nconst out = [];\nfor (const item of $input.all()) {\n  const recs = item.json.opportunitiesData || [];\n  if ((item.json.totalRecords||0) > (item.json.offset||0) + recs.length) out.push({json:{_needsNextPage:true, totalRecords:item.json.totalRecords}}); // paginate: raise window or loop\n  for (const r of recs) {\n    const pop = r.placeOfPerformance || {};\n    const zip = (pop.zip || '').slice(0,5) || null;\n    const isDFW = zip && DFW.includes(zip.slice(0,3));\n    if (!isDFW) continue; // Texas-wide notices outside DFW are skipped for the pilot\n    // Store only permitted metadata (no POC personal data, no full protected description)\n    const permitted = { noticeId: r.noticeId, title: r.title, solicitationNumber: r.solicitationNumber, type: r.type, postedDate: r.postedDate,\n      responseDeadLine: r.responseDeadLine, naicsCode: r.naicsCode, setAside: r.typeOfSetAsideDescription, active: r.active,\n      agency: r.fullParentPathName, city: pop.city?.name || null, state: pop.state?.code || 'TX', zip, uiLink: `https://sam.gov/opp/${r.noticeId}/view` };\n    const payload_hash = crypto.createHash('sha256').update(JSON.stringify(permitted)).digest('hex');\n    out.push({ json: { source_record_id: r.noticeId, source_url: permitted.uiLink, payload_hash, permitted_payload: permitted } });\n  }\n}\nreturn out.filter(o => !o.json._needsNextPage);"
+        "jsCode": "\nconst crypto = require('crypto');\nconst out = [];\nfor (const item of $input.all()) {\n  const recs = item.json.opportunitiesData || [];\n  if ((item.json.totalRecords||0) > (item.json.offset||0) + recs.length) out.push({json:{_needsNextPage:true, totalRecords:item.json.totalRecords}}); // paginate: raise window or loop\n  for (const r of recs) {\n    const pop = r.placeOfPerformance || {};\n    const zip = (pop.zip || '').slice(0,5) || null;\n    if (pop.state?.code && pop.state.code !== 'TX') continue; // public bids: all of Texas (state=TX query + guard)\n    // Store only permitted metadata (no POC personal data, no full protected description)\n    const permitted = { noticeId: r.noticeId, title: r.title, solicitationNumber: r.solicitationNumber, type: r.type, postedDate: r.postedDate,\n      responseDeadLine: r.responseDeadLine, naicsCode: r.naicsCode, setAside: r.typeOfSetAsideDescription, active: r.active,\n      agency: r.fullParentPathName, city: pop.city?.name || null, state: pop.state?.code || 'TX', zip, uiLink: `https://sam.gov/opp/${r.noticeId}/view` };\n    const payload_hash = crypto.createHash('sha256').update(JSON.stringify(permitted)).digest('hex');\n    out.push({ json: { source_record_id: r.noticeId, source_url: permitted.uiLink, payload_hash, permitted_payload: permitted } });\n  }\n}\nreturn out.filter(o => !o.json._needsNextPage);"
       },
-      "name": "Normalize + DFW filter + hash",
+      "name": "Normalize (all Texas) + hash",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         660,
         0
       ],
-      "id": "normalize-+-dfw-filter-+-hash"
+      "id": "normalize-(all-texas)-+-hash"
     },
     {
       "parameters": {

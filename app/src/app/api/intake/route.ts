@@ -54,7 +54,7 @@ export async function POST(req: Request) {
   const { data: consent } = await db.from("consents").insert({
     opportunity_id: opp.id, purpose: "share_request_with_eligible_contractors", sharing_scope: "matched_eligible_contractors",
     privacy_version: env.privacyVersion(),
-    proof: { channel: "webflow_form", ip_hash: createHash("sha256").update(ip).digest("hex"), ua: req.headers.get("user-agent"), consent_share: true, consent_privacy: true, at: new Date().toISOString() },
+    proof: { channel: "webflow_form", ip_hash: createHash("sha256").update(ip).digest("hex"), ua: req.headers.get("user-agent"), consent_share: true, consent_privacy: true, consent_text: "I agree to share this request and my contact details with up to 5 eligible, matched contractors through Archangel Advertising so they can contact me about this job. I can withdraw at any time. No contractor or outcome is guaranteed.", max_recipients: 5, at: new Date().toISOString() },
   }).select("id").single();
   await db.from("opportunities").update({ consent_id: consent?.id }).eq("id", opp.id);
   await db.from("lead_contacts").insert({ opportunity_id: opp.id, contact_name: f.name, email: f.email, phone: f.phone || null, address: f.address ?? null });

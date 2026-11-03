@@ -46,7 +46,7 @@ Required field `name`s (must match exactly): `name`, `email`, `phone` (optional)
   <input name="timeline" placeholder="When? (e.g. next 2 weeks)">
   <input name="website" style="display:none" tabindex="-1" autocomplete="off">
   <label><input type="checkbox" name="consent_share" value="true" required>
-    I agree to share this request and my contact details with up to N eligible, matched contractors so they can contact me about this job. I can withdraw at any time. No contractor or outcome is guaranteed.</label>
+    I agree to share this request and my contact details with up to 5 eligible, matched contractors through Archangel Advertising so they can contact me about this job. I can withdraw at any time. No contractor or outcome is guaranteed.</label>
   <label><input type="checkbox" name="consent_privacy" value="true" required> I have read the <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</label>
   <div class="cf-turnstile" data-sitekey="YOUR_TURNSTILE_SITE_KEY"></div>
   <button type="submit">Submit request</button>

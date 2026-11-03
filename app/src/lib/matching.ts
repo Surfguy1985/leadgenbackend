@@ -21,3 +21,12 @@ export function score(o: Opp, c: Contractor, now = Date.now()): { eligible: bool
   const f = { trade: trade * WEIGHTS.trade, geo: geo * WEIGHTS.geo, qualifications: qual * WEIGHTS.qualifications, activity: activity * WEIGHTS.activity, preferences: pref * WEIGHTS.preferences };
   return { eligible: true, score: Math.round(Object.values(f).reduce((a, b) => a + b, 0) * 100) / 100, factors: f };
 }
+
+/** Private leads go to at most 5 contractors (target minimum 3). Public bids are not capped. */
+export const PRIVATE_LEAD_MAX = 5, PRIVATE_LEAD_MIN_TARGET = 3;
+export function allocate<T extends { score: number }>(kind: "private_lead" | "public_bid", ranked: T[]): { picks: T[]; underMinTarget: boolean } {
+  const sorted = [...ranked].sort((a, b) => b.score - a.score);
+  if (kind !== "private_lead") return { picks: sorted, underMinTarget: false };
+  const picks = sorted.slice(0, PRIVATE_LEAD_MAX);
+  return { picks, underMinTarget: picks.length < PRIVATE_LEAD_MIN_TARGET };
+}

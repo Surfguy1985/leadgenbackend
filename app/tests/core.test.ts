@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { score } from "../src/lib/matching";
+import { score, allocate } from "../src/lib/matching";
 import { reviewReasons } from "../src/lib/review";
 import { Classification, IntakeForm } from "../src/lib/schemas";
 
@@ -16,3 +16,10 @@ test("prompt injection → review", () => assert.ok(reviewReasons({ ...base, sus
 test("discovery signal without consent → review", () => assert.ok(reviewReasons({ ...base }, { sourceKind: "community_referral", hasConsent: false }).length > 0));
 test("model can't self-verify", () => assert.ok(reviewReasons({ ...base, verification_status: "verified", source_kind: "direct" }, { sourceKind: "direct", hasConsent: false }).includes("model_claimed_verification")));
 test("intake requires consent", () => assert.equal(IntakeForm.safeParse({ submission_id: "abcdefgh1", "cf-turnstile-response": "t", name: "A", email: "a@example.com", zip: "75034", description: "Mow my lawn weekly please", consent_share: "false", consent_privacy: "true" }).success, false));
+
+test("private leads capped at 5, flagged under 3; public bids uncapped", () => {
+  const r = (n: number) => Array.from({ length: n }, (_, i) => ({ score: i }));
+  const p = allocate("private_lead", r(8)); assert.equal(p.picks.length, 5); assert.equal(p.picks[0].score, 7); assert.equal(p.underMinTarget, false);
+  assert.equal(allocate("private_lead", r(2)).underMinTarget, true);
+  assert.equal(allocate("public_bid", r(8)).picks.length, 8);
+});

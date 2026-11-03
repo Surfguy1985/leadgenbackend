@@ -35,7 +35,7 @@ wf01 = wf("WF-01 Direct job intake", [
   node("Intake webhook", "n8n-nodes-base.webhook", {"httpMethod": "POST", "path": "wf01-intake", "responseMode": "onReceived", "authentication": "headerAuth", "options": {}}, [0, 0], 2, credentials={"httpHeaderAuth": {"id": "N8N_SHARED", "name": "x-shared-secret header"}}, webhookId="wf01-intake"),
   http("Grok classify", "POST", f"{APP}/api/ai/classify", [220, 0], body='={{ JSON.stringify({ opportunity_id: $json.body.opportunity_id, source_kind: "direct", has_consent: true, text: $json.body.text }) }}', headers=SECRET_HDR),
   http("Send verification email", "POST", "https://api.resend.com/emails", [440, 0], headers={"parameters": [{"name": "Authorization", "value": "=Bearer {{$env.RESEND_API_KEY}}"}]},
-       body='={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$("Intake webhook").item.json.body.email], subject: "Confirm your service request", html: `<p>Please confirm your request so we can share it with eligible contractors.</p><p><a href="${$("Intake webhook").item.json.body.verify_url}">Confirm request</a></p><p>No contractor is guaranteed. You can withdraw anytime at ${$env.APP_URL}/delete-data.</p>` }) }}'),
+       body='={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$("Intake webhook").item.json.body.email], subject: "Archangel Advertising: confirm your service request", html: `<p>Thanks for using Archangel Advertising. Please confirm your request so we can share it with up to 5 eligible, matched contractors.</p><p><a href="${$("Intake webhook").item.json.body.verify_url}">Confirm request</a></p><p>No contractor is guaranteed. You can withdraw anytime at ${$env.APP_URL}/delete-data.</p>` }) }}'),
   code("Note: verify → review → publish", "// Status is set to 'verified' only after the email link is clicked (app route) AND a moderator approves\n// in /admin (first 100 submissions are always reviewed). Publishing a private lead triggers WF-04 via\n// a Supabase Database Webhook on opportunities (status -> published).\nreturn $input.all();", [660, 0]),
 ], {"Intake webhook": ["Grok classify"], "Grok classify": ["Send verification email"], "Send verification email": ["Note: verify → review → publish"]},
 "## WF-01 Direct job intake\nWebflow form → /api/intake (Turnstile, consent, dedupe by submission_id, contacts stored in lead_contacts) → this webhook → Grok classify (uncertain → moderation_queue) → email verification → human approval in /admin → published (private) → WF-04.\nWithdrawn consent is enforced by a DB trigger (revokes access, suppresses queued notifications).")
@@ -48,9 +48,8 @@ wf02 = wf("WF-02 SAM.gov procurement ingestion", [
   http("SAM.gov Get Opportunities", "GET", "https://api.sam.gov/opportunities/v2/search", [440, 0],
        qs={"api_key": "={{$env.SAM_GOV_API_KEY}}", "postedFrom": "={{$json.postedFrom}}", "postedTo": "={{$json.postedTo}}", "state": "TX", "ncode": "={{$json.ncode}}", "ptype": "o,k,p,r", "limit": "1000", "offset": "={{$json.offset}}"}),
   # rate limit: one NAICS query every 2s (see batching option set below)
-  code("Normalize + DFW filter + hash", r"""
+  code("Normalize (all Texas) + hash", r"""
 const crypto = require('crypto');
-const DFW = ['750','751','752','753','760','761','762']; // DFW-area ZIP3 prefixes; tune in staging
 const out = [];
 for (const item of $input.all()) {
   const recs = item.json.opportunitiesData || [];
@@ -58,8 +57,7 @@ for (const item of $input.all()) {
   for (const r of recs) {
     const pop = r.placeOfPerformance || {};
     const zip = (pop.zip || '').slice(0,5) || null;
-    const isDFW = zip && DFW.includes(zip.slice(0,3));
-    if (!isDFW) continue; // Texas-wide notices outside DFW are skipped for the pilot
+    if (pop.state?.code && pop.state.code !== 'TX') continue; // public bids: all of Texas (state=TX query + guard)
     // Store only permitted metadata (no POC personal data, no full protected description)
     const permitted = { noticeId: r.noticeId, title: r.title, solicitationNumber: r.solicitationNumber, type: r.type, postedDate: r.postedDate,
       responseDeadLine: r.responseDeadLine, naicsCode: r.naicsCode, setAside: r.typeOfSetAsideDescription, active: r.active,
@@ -93,7 +91,7 @@ return $input.all().map((i, idx) => {
 ], {"Twice daily": ["Build NAICS queries"], "Build NAICS queries": ["SAM.gov Get Opportunities"], "SAM.gov Get Opportunities": ["Normalize + DFW filter + hash"],
     "Normalize + DFW filter + hash": ["Insert raw_ingestion (dedupe)"], "Insert raw_ingestion (dedupe)": ["New or changed?"], "New or changed?": [["Skip if inactive/expired"], []],
     "Skip if inactive/expired": ["Grok classify"], "Grok classify": ["Map to opportunity"], "Map to opportunity": ["Upsert opportunity"]},
-"## WF-02 SAM.gov Get Opportunities Public API\nGET https://api.sam.gov/opportunities/v2/search (postedFrom/postedTo MM/dd/yyyy, limit<=1000, offset). Filters: state=TX, property-service NAICS, place-of-performance ZIP3 in DFW.\nStores permitted metadata only + sha256 hash; unique (source_id, source_record_id[, hash]) prevents duplicates. Public bids are labeled non-exclusive and link to the original notice.\nSet env SAM_GOV_API_KEY, SAM_SOURCE_ID (row in sources). Daily request quota depends on SAM.gov account role.\nAdd Texas SmartBuy / city portals as separate branches only after terms review.")
+"## WF-02 SAM.gov Get Opportunities Public API\nGET https://api.sam.gov/opportunities/v2/search (postedFrom/postedTo MM/dd/yyyy, limit<=1000, offset). Filters: state=TX (all of Texas), property-service NAICS. Private leads remain a DFW pilot; public bids are statewide.\nStores permitted metadata only + sha256 hash; unique (source_id, source_record_id[, hash]) prevents duplicates. Public bids are labeled non-exclusive and link to the original notice.\nSet env SAM_GOV_API_KEY, SAM_SOURCE_ID (row in sources). Daily request quota depends on SAM.gov account role.\nAdd Texas SmartBuy / city portals as separate branches only after terms review.")
 
 # ---------- WF-04 ----------
 score_js = r"""
@@ -116,7 +114,10 @@ for (const it of $('Load contractors').all()) { const rows = Array.isArray(it.js
   const score=Math.round(Object.values(f).reduce((a,b)=>a+b,0)*100)/100;
   out.push({json:{opportunity_id:o.id, contractor_id:c.id, owner_user_id:c.organizations.owner_user_id, email:c.alert_email, max_alerts_daily:c.max_alerts_daily, match_score:score, match_factors:f, title:o.title, kind:o.kind, city:o.city, zip:o.zip}});
  }}
-return out.sort((a,b)=>b.json.match_score-a.json.match_score);"""
+out.sort((a,b)=>b.json.match_score-a.json.match_score);
+// Private leads: shared with up to 5 contractors (target minimum 3). Public bids: no cap (non-exclusive public info).
+if (o.kind==='private_lead') { const top=out.slice(0,5); if (top.length<3) top.forEach(t=>t.json.under_min_target=true); if(top.length<3) console.log(`private lead ${o.id}: only ${top.length} eligible contractors (target 3) — flag for ops review`); return top; }
+return out;"""
 wf04 = wf("WF-04 Matching and notification", [
   node("Opportunity published (DB webhook)", "n8n-nodes-base.webhook", {"httpMethod": "POST", "path": "wf04-match", "responseMode": "onReceived", "authentication": "headerAuth", "options": {}}, [0, 0], 2, credentials={"httpHeaderAuth": {"id": "N8N_SHARED", "name": "x-shared-secret header"}}, webhookId="wf04-match"),
   http("Load opportunity", "GET", f"={{{{$env.SUPABASE_URL}}}}/rest/v1/opportunities?id=eq.{{{{$json.body.record.id}}}}&status=eq.published&select=id,kind,title,trade,subtrades,zip,city,property_type,expires_at,deadline", [220, 0], sb=True),
@@ -130,7 +131,7 @@ wf04 = wf("WF-04 Matching and notification", [
        body='={{ JSON.stringify({ recipient_id: $("Score (40/25/20/10/5)").item.json.owner_user_id, opportunity_id: $("Score (40/25/20/10/5)").item.json.opportunity_id, channel: "email", status: "queued", dedupe_key: `opp:${$("Score (40/25/20/10/5)").item.json.opportunity_id}:user:${$("Score (40/25/20/10/5)").item.json.owner_user_id}:email` }) }}'),
   iff("Newly queued? (event dedupe)", "={{ !!$json.id }}", [1320, 0]),
   http("Resend alert", "POST", "https://api.resend.com/emails", [1540, 0], headers={"parameters": [{"name": "Authorization", "value": "=Bearer {{$env.RESEND_API_KEY}}"}, {"name": "Idempotency-Key", "value": "={{$json.dedupe_key}}"}]},
-       body='={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$("Score (40/25/20/10/5)").item.json.email], subject: `New ${$("Score (40/25/20/10/5)").item.json.kind === "public_bid" ? "public bid" : "verified request"}: ${$("Score (40/25/20/10/5)").item.json.title}`, html: `<p>${$("Score (40/25/20/10/5)").item.json.city || ""} ${$("Score (40/25/20/10/5)").item.json.zip || ""}</p><p><a href="${$env.APP_URL}/dashboard">View in your dashboard</a></p><p style="font-size:12px">Match score is a routing heuristic, not a guarantee of work.</p>` }) }}'),
+       body='={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$("Score (40/25/20/10/5)").item.json.email], subject: `New ${$("Score (40/25/20/10/5)").item.json.kind === "public_bid" ? "public bid" : "verified request"}: ${$("Score (40/25/20/10/5)").item.json.title}`, html: `<p>${$("Score (40/25/20/10/5)").item.json.city || ""} ${$("Score (40/25/20/10/5)").item.json.zip || ""}</p><p><a href="${$env.APP_URL}/dashboard">View in your dashboard</a></p><p style="font-size:12px">Match score is a routing heuristic, not a guarantee of work. Sent by Archangel Advertising.</p>` }) }}'),
   http("Mark sent", "PATCH", f"={{{{$env.SUPABASE_URL}}}}/rest/v1/notifications?dedupe_key=eq.{{{{$('Newly queued? (event dedupe)').item.json.dedupe_key}}}}", [1760, 0], sb=True, body='={{ JSON.stringify({ status: "sent", sent_at: new Date().toISOString() }) }}'),
 ], {"Opportunity published (DB webhook)": ["Load opportunity"], "Load opportunity": ["Load contractors"], "Load contractors": ["Score (40/25/20/10/5)"], "Score (40/25/20/10/5)": ["Upsert match"],
     "Upsert match": ["Queue notification (dedupe_key)"], "Queue notification (dedupe_key)": ["Newly queued? (event dedupe)"], "Newly queued? (event dedupe)": [["Resend alert"], []], "Resend alert": ["Mark sent"]},

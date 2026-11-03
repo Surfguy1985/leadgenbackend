@@ -1,4 +1,4 @@
--- DFW Property-Services Lead Marketplace — initial schema (spec §4)
+-- Archangel Advertising lead marketplace — initial schema (spec §4)
 -- Public bids / discovery signals / verified private leads are strictly separated.
 -- gen_random_uuid() is built into Postgres 13+ (no extension needed)
 
