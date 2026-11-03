@@ -1,0 +1,28 @@
+<!-- Crewforthat: Jobs board tabs (Jobs Now / Upcoming / Buyers). Reads only public, rights-cleared listings. -->
+<div id="cft-tabs">
+  <div class="cft-tablist" role="tablist">
+    <button role="tab" data-tab="jobs_now" aria-selected="true">Jobs Now</button>
+    <button role="tab" data-tab="upcoming">Upcoming</button>
+    <button role="tab" data-tab="buyers">Buyers</button>
+  </div>
+  <div class="cft-list" id="cft-list" aria-live="polite">Loading…</div>
+</div>
+<script>
+(function(){
+  var API='https://archangel-leadgen.vercel.app/api/public/opportunities', list=document.getElementById('cft-list');
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function safeUrl(u){return /^https:\/\//.test(u||'')?u:''}
+  async function load(tab){
+    list.textContent='Loading…';
+    try{ var r=await fetch(API+'?tab='+tab), j=await r.json();
+      if(!j.items||!j.items.length){list.textContent='No listings right now. Check back soon.';return;}
+      list.innerHTML=j.items.map(function(o){var link=safeUrl(o.official_apply_url)||safeUrl(o.source_url);
+        return '<article class="cft-card"><h3>'+esc(o.title)+'</h3><p>'+esc(o.trade)+' · '+esc(o.geographic_scope==='statewide'?'Statewide (TX)':(o.city||o.zip||''))+(o.deadline?' · Due '+esc(new Date(o.deadline).toLocaleDateString()):'')+'</p>'
+          +(o.summary?'<p>'+esc(o.summary)+'</p>':'')+(link?'<a href="'+esc(link)+'" target="_blank" rel="noopener nofollow">View official listing</a>':'')
+          +'<small>'+(o.listing_type==='public_bid'?'Public bid — not exclusive. ':'')+(o.last_checked_at?'Last checked '+esc(new Date(o.last_checked_at).toLocaleDateString()):'')+'</small></article>';}).join('');
+    }catch(e){list.textContent='Could not load listings.';}
+  }
+  document.querySelectorAll('#cft-tabs [data-tab]').forEach(function(b){b.addEventListener('click',function(){document.querySelectorAll('#cft-tabs [data-tab]').forEach(function(x){x.setAttribute('aria-selected',x===b)});load(b.dataset.tab);});});
+  load('jobs_now');
+})();
+</script>

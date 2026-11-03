@@ -93,3 +93,8 @@ Keep the Webflow page as marketing, with a button to `{APP_URL}/login?next=/dash
 - Canonical embed source: `webflow/post-job-embed.html` (adds urgency, submitter type, and a **separate optional** public-listing consent; contact-share consent stays required, max 5 contractors).
 - Direct requests are matched only in DFW ZIPs; out-of-market requests are saved, queued for review (`out_of_market`), and not sent to n8n matching.
 - Each request gets a hashed, 60-day manage token; the email (n8n WF-01, `manage_url`) links to `/manage` for status / still-needed / unlist / close / withdraw.
+
+## Tabs + Directory (Milestone 4)
+- CMS (created via Webflow MCP, not published): Opportunities gained `tab`, `listing-type`, `geographic-scope`, `official-apply-url`, `last-checked`; new **Directory** collection `6aea63e1a1dadedc37604c9a` (organization-id, kind, city, zip, public-website, vendor-onboarding-url, claim-status, last-checked). Env: `WEBFLOW_DIRECTORY_COLLECTION_ID`.
+- Sync (`POST /api/webflow/sync`): opportunity liveness = presence in the anon `public_opportunities` view (rights, hide_after, archive enforced by RLS); also unpublishes items whose hide_after passed. Directory: listed + (opt-in if self-created, or source rights allow publish). Only whitelisted, non-personal fields leave the DB.
+- Two ways to render tabs in Webflow: (a) Collection Lists filtered on `tab` = jobs_now / upcoming / buyers (native, SEO-friendly), or (b) drop `webflow/jobs-tabs-embed.html` into an Embed (reads `GET /api/public/opportunities?tab=`). Neither has been placed on a page yet — page layout/copy is a Webflow design decision.
