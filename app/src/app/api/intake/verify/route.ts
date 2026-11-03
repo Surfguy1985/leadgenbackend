@@ -20,5 +20,9 @@ export async function GET(req: Request) {
     await db.from("moderation_queue").insert({ opportunity_id: id.data, reason: "email_verified_ready_for_approval" });
     await audit("requester", "email_verified", "opportunity", id.data);
   }
-  return NextResponse.redirect(`${process.env.WEBFLOW_ORIGIN ?? process.env.NEXT_PUBLIC_APP_URL}/post-job/confirmed`);
+  // WEBFLOW_ORIGIN is a comma-separated CORS allow-list, not a redirect URL.
+  // Prefer the live Webflow hostname and the actual published confirmation slug.
+  const origins = (process.env.WEBFLOW_ORIGIN ?? "").split(",").map(o => o.trim()).filter(Boolean);
+  const publicWebflowOrigin = origins.find(o => o.endsWith(".webflow.io")) ?? origins[0] ?? process.env.NEXT_PUBLIC_APP_URL ?? url.origin;
+  return NextResponse.redirect(new URL("/post-job-confirmed", publicWebflowOrigin), 303);
 }
