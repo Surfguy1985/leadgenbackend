@@ -6,7 +6,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/core.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
     "sql:lint": "tsx ../scripts/sql-lint.mts",
     "seed:staging": "tsx ../scripts/seed-staging.mts",
     "sql:v2": "tsx ../scripts/sql-v2-test.mts",

@@ -37,7 +37,7 @@ npm run typecheck && npm test && npm run sql:lint && npm run build
 6. [ ] **n8n Cloud**: import the 5 JSONs. Create a Header Auth credential "Supabase service role" (`apikey` + `Authorization: Bearer <service key>`) and a Header Auth credential for webhooks (`x-shared-secret`). Set env/variables `APP_URL, SUPABASE_URL, N8N_WEBHOOK_SHARED_SECRET, RESEND_API_KEY, ALERT_FROM_EMAIL, OPS_ALERT_EMAIL, SAM_GOV_API_KEY, SAM_SOURCE_ID`. Set WF-09 as the error workflow on the others. Add a 15-min schedule that POSTs `/api/webflow/sync`.
 7. [ ] **Resend**: verify the domain and create an API key.
 8. [ ] **Stripe** (test mode): 2 products/prices ($99 Local Pro, $199 Multi-Trade, labeled test pricing). Webhook → `/api/stripe/webhook` for `checkout.session.completed, customer.subscription.created/updated/deleted, invoice.paid, invoice.payment_failed`. Checkout sessions must set `subscription_data.metadata.organization_id`.
-9. [x] **Cloudflare Turnstile**: widget 'Archangel Post a Job', site key `0x4AAAAAAFykd3724PLNQGyS` (in docs/WEBFLOW_INTEGRATION.md embed), secret in Vercel.
+9. [x] **Cloudflare Turnstile**: widget 'Archangel Post a Job' (legacy Cloudflare widget label — infrastructure name, like the Vercel slug; site-visible copy is Crewforthat), site key `0x4AAAAAAFykd3724PLNQGyS` (in docs/WEBFLOW_INTEGRATION.md embed), secret in Vercel.
 10. [ ] **Webflow**: API token (CMS:write) and the Opportunities collection (see docs).
 11. [ ] **SAM.gov**: account and public API key (Account Details page).
 12. [ ] Google Search Console. Sentry/PostHog optional (mask PII).

@@ -14,7 +14,7 @@ const svc = (p, o = {}) => req(p, { ...o, key: SVC });
 const ins = async (t, row) => { const r = await svc(`/rest/v1/${t}`, { method: "POST", body: row }); if (r.s >= 300) throw new Error(`insert ${t}: ${r.s} ${JSON.stringify(r.j).slice(0, 200)}`); return r.j[0]; };
 const users = {}, created = { opps: [], consents: [], orgs: [], src: null, objects: [] };
 
-const TABLES = ["profiles","organizations","contractor_profiles","sources","raw_ingestions","consents","opportunities","lead_contacts","matches","lead_access","notifications","subscriptions","moderation_queue","audit_logs","stripe_events","workflow_failures"];
+const TABLES = ["plans","app_settings","source_rights","ingestion_runs","connector_health","opportunity_events","opportunity_facts","properties","organization_relationships","profile_claims","job_submissions","manage_tokens","contact_disclosures","saved_items","alerts_preferences","billing_ledger","billing_adjustments","admin_roles","admin_actions","privacy_requests","ai_usage","profiles","organizations","contractor_profiles","sources","raw_ingestions","consents","opportunities","lead_contacts","matches","lead_access","notifications","subscriptions","moderation_queue","audit_logs","stripe_events","workflow_failures"];
 try {
   // 1. Schema presence
   for (const t of TABLES) { const r = await svc(`/rest/v1/${t}?select=*&limit=0`); ok(`table ${t} exists`, r.s === 200, r.s === 200 ? "" : `${r.s} ${r.j?.code || ""} ${r.j?.message || ""}`); }
@@ -42,7 +42,7 @@ try {
   const cpB = await ins("contractor_profiles", { organization_id: orgB.id, trades: ["plumbing"], zip_codes: ["75201"] });
   await ins("subscriptions", { organization_id: orgA.id, plan: "local_pro", status: "active" });
   const src = await ins("sources", { name: TAG + Date.now(), kind: "direct", active: true, reuse_allowed: true }); created.src = src.id;
-  const P = await ins("opportunities", { kind: "public_bid", title: TAG + "public", trade: "plumbing", status: "published", visibility: "public", verification_status: "verified", source_id: src.id }); created.opps.push(P.id);
+  const P = await ins("opportunities", { kind: "public_bid", title: TAG + "public", trade: "plumbing", status: "published", visibility: "public", verification_status: "verified" }); created.opps.push(P.id);
   const D = await ins("opportunities", { kind: "public_bid", title: TAG + "draft", trade: "plumbing", status: "draft", visibility: "internal", is_test_data: true }); created.opps.push(D.id);
   const L = await ins("opportunities", { kind: "private_lead", title: TAG + "private", trade: "plumbing", status: "needs_review", visibility: "private", owner_user_id: H.id, is_test_data: true }); created.opps.push(L.id);
   const C = await ins("consents", { subject_user_id: H.id, opportunity_id: L.id, purpose: TAG, sharing_scope: "up to 5 matched contractors", privacy_version: "test" }); created.consents.push(C.id);
@@ -54,6 +54,18 @@ try {
   const ids = `id=in.(${created.opps.join(",")})`;
   const seen = async (jwt, path = `/rest/v1/opportunities?select=id&${ids}`) => { const r = await req(path, { jwt }); return Array.isArray(r.j) ? r.j.map(x => x.id).sort() : r; };
 
+
+  // v2 checks
+  const pl = await svc(`/rest/v1/plans?select=code,monthly_price_cents,trial_days,visible,purchasable&order=sort`);
+  ok("plans seeded with v3 prices", JSON.stringify(pl.j.map(x => [x.code, x.monthly_price_cents])) === JSON.stringify([["free",0],["starter",3999],["pro_match",7999],["growth",14999],["elite",29999]]), JSON.stringify(pl.j.map(x => x.code)));
+  const apl = await req(`/rest/v1/plans?select=code`); ok("anon sees only visible plans", Array.isArray(apl.j) && apl.j.length === 3, `${apl.j?.length}`);
+  const st = await svc(`/rest/v1/app_settings?select=key`); ok("app_settings seeded", Array.isArray(st.j) && st.j.length >= 4, `${st.j?.length}`);
+  const rvAnon = await req(`/rest/v1/rpc/reveal_contact`, { method: "POST", body: { p_opportunity: L.id } }); ok("reveal_contact denied to anon", rvAnon.s >= 400, `${rvAnon.s}`);
+  const rvFree = await req(`/rest/v1/rpc/reveal_contact`, { jwt: A.jwt, method: "POST", body: { p_opportunity: L.id } }); ok("reveal_contact denied to free/unsubscribed contractor", rvFree.s >= 400 && JSON.stringify(rvFree.j).includes("plan_not_entitled"), `${rvFree.s}`);
+  const rvB = await req(`/rest/v1/rpc/reveal_contact`, { jwt: B.jwt, method: "POST", body: { p_opportunity: L.id } }); ok("reveal_contact denied to unmatched contractor", rvB.s >= 400, `${rvB.s}`);
+  const sw = await req(`/rest/v1/rpc/archive_sweep`, { method: "POST", body: {} }); ok("archive_sweep denied to anon", sw.s >= 400, `${sw.s}`);
+  const sg = await req(`/rest/v1/admin_roles`, { jwt: A.jwt, method: "POST", body: { user_id: A.id, role: "owner", granted_by: A.id } }); ok("admin self-grant denied", sg.s >= 400, `${sg.s}`);
+  for (const t of ["source_rights","contact_disclosures","job_submissions","manage_tokens","billing_ledger","admin_roles"]) { const r = await req(`/rest/v1/${t}?select=*`, { jwt: A.jwt }); ok(`contractor cannot read ${t}`, r.s >= 400 || (Array.isArray(r.j) && r.j.length === 0), `${r.s}`); }
   // 3. Anon
   ok("anon sees only published public bid (opportunities)", JSON.stringify(await seen()) === JSON.stringify([P.id]));
   ok("anon sees only published public bid (public_opportunities view)", JSON.stringify(await seen(undefined, `/rest/v1/public_opportunities?select=id&${ids}`)) === JSON.stringify([P.id]));
