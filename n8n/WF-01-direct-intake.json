@@ -1,0 +1,170 @@
+{
+  "name": "WF-01 Direct job intake",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF-01 Direct job intake\nWebflow form \u2192 /api/intake (Turnstile, consent, dedupe by submission_id, contacts stored in lead_contacts) \u2192 this webhook \u2192 Grok classify (uncertain \u2192 moderation_queue) \u2192 email verification \u2192 human approval in /admin \u2192 published (private) \u2192 WF-04.\nWithdrawn consent is enforced by a DB trigger (revokes access, suppresses queued notifications).",
+        "width": 520,
+        "height": 260
+      },
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -300
+      ],
+      "id": "notes"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf01-intake",
+        "responseMode": "onReceived",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "name": "Intake webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "intake-webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "N8N_SHARED",
+          "name": "x-shared-secret header"
+        }
+      },
+      "webhookId": "wf01-intake"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.APP_URL}}/api/ai/classify",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-shared-secret",
+              "value": "={{$env.N8N_WEBHOOK_SHARED_SECRET}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ opportunity_id: $json.body.opportunity_id, source_kind: \"direct\", has_consent: true, text: $json.body.text }) }}"
+      },
+      "name": "Grok classify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "grok-classify",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.RESEND_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$(\"Intake webhook\").item.json.body.email], subject: \"Confirm your service request\", html: `<p>Please confirm your request so we can share it with eligible contractors.</p><p><a href=\"${$(\"Intake webhook\").item.json.body.verify_url}\">Confirm request</a></p><p>No contractor is guaranteed. You can withdraw anytime at ${$env.APP_URL}/delete-data.</p>` }) }}"
+      },
+      "name": "Send verification email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "send-verification-email",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Status is set to 'verified' only after the email link is clicked (app route) AND a moderator approves\n// in /admin (first 100 submissions are always reviewed). Publishing a private lead triggers WF-04 via\n// a Supabase Database Webhook on opportunities (status -> published).\nreturn $input.all();"
+      },
+      "name": "Note: verify \u2192 review \u2192 publish",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "note:-verify-\u2192-review-\u2192-publish"
+    }
+  ],
+  "connections": {
+    "Intake webhook": {
+      "main": [
+        [
+          {
+            "node": "Grok classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok classify": {
+      "main": [
+        [
+          {
+            "node": "Send verification email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send verification email": {
+      "main": [
+        [
+          {
+            "node": "Note: verify \u2192 review \u2192 publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "WF-09 Ops and errors"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "lead-marketplace"
+    }
+  ]
+}

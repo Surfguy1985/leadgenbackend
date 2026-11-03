@@ -1,0 +1,56 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { Classification } from "@/lib/schemas";
+import { SYSTEM_PROMPT, wrapUntrusted, xaiStructured } from "@/lib/xai";
+import { reviewReasons } from "@/lib/review";
+import { adminDb, audit } from "@/lib/supabase";
+import { safeEqual } from "@/lib/rateLimit";
+import { env } from "@/lib/env";
+
+export const runtime = "nodejs";
+
+const Body = z.object({
+  opportunity_id: z.string().uuid().optional(),
+  raw_ingestion_id: z.string().uuid().optional(),
+  source_kind: z.enum(["official_api","partner","direct","community_referral"]),
+  has_consent: z.boolean().default(false),
+  text: z.string().min(1).max(20000),
+});
+
+/** Server-to-server only (n8n WF-01/WF-02, /api/intake). Auth: x-shared-secret. */
+export async function POST(req: Request) {
+  const secret = req.headers.get("x-shared-secret") ?? "";
+  if (!safeEqual(secret, env.n8nSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const b = Body.safeParse(await req.json().catch(() => null));
+  if (!b.success) return NextResponse.json({ error: "bad_request", issues: b.error.issues }, { status: 400 });
+  const { text, source_kind, has_consent, opportunity_id, raw_ingestion_id } = b.data;
+
+  const r = await xaiStructured(Classification, "opportunity_classification", [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: `Source kind: ${source_kind}. Consent on file: ${has_consent}. Classify:\n${wrapUntrusted(text)}` },
+  ]);
+
+  const db = adminDb();
+  if (!r.ok) {
+    // malformed JSON / timeout / schema failure → human review, never dropped
+    await db.from("moderation_queue").insert({ opportunity_id: opportunity_id ?? null, raw_ingestion_id: raw_ingestion_id ?? null, reason: "classification_failed", details: { error: r.error } });
+    await audit("system", "classify_failed", "opportunity", opportunity_id, { error: r.error });
+    return NextResponse.json({ ok: false, needs_review: true, error: r.error }, { status: 200 });
+  }
+  const c = r.data;
+  // Never trust model claims on consent/verification
+  if (!has_consent) c.consent_status = "not_granted";
+  if (source_kind !== "official_api" && !has_consent) c.verification_status = "unverified";
+  const reasons = reviewReasons(c, { sourceKind: source_kind, hasConsent: has_consent });
+
+  if (opportunity_id) {
+    await db.from("opportunities").update({
+      trade: c.trade, subtrades: c.subtrades, property_type: c.property_type, city: c.city, zip: c.zip,
+      is_recurring: c.is_recurring, budget_min: c.budget_min, budget_max: c.budget_max, summary: c.summary,
+      status: reasons.length ? "needs_review" : "classified",
+    }).eq("id", opportunity_id);
+  }
+  if (reasons.length) await db.from("moderation_queue").insert({ opportunity_id: opportunity_id ?? null, raw_ingestion_id: raw_ingestion_id ?? null, reason: reasons.join(","), details: { classification: c } });
+  await audit("system", "classified", "opportunity", opportunity_id, { reasons });
+  return NextResponse.json({ ok: true, classification: c, needs_review: reasons.length > 0, review_reasons: reasons });
+}

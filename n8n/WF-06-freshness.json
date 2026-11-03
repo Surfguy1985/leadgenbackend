@@ -1,0 +1,385 @@
+{
+  "name": "WF-06 Freshness and quality control",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF-06 Freshness + quality\nExpires items past deadline/expires_at (never fabricates a deadline), suppresses queued alerts for closed items (RPC), and re-checks SAM.gov notices daily for cancellation/archival.\nRecheck consumes SAM.gov quota \u2014 keep limit modest.",
+        "width": 520,
+        "height": 260
+      },
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -300
+      ],
+      "id": "notes"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "name": "Every 6 hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "every-6-hours"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/opportunities?deadline=lt.{{new Date().toISOString()}}&status=in.(published,matched,notified)",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: \"expired\", visibility: \"internal\" }) }}"
+      },
+      "name": "Expire past deadline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        -120
+      ],
+      "id": "expire-past-deadline",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/opportunities?expires_at=lt.{{new Date().toISOString()}}&status=in.(published,matched,notified)",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: \"expired\", visibility: \"internal\" }) }}"
+      },
+      "name": "Expire past expires_at",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        60
+      ],
+      "id": "expire-past-expires_at",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/rpc/suppress_closed_notifications",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}"
+      },
+      "name": "Suppress queued alerts for closed opps",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "suppress-queued-alerts-for-closed-opps",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/opportunities?kind=eq.public_bid&source_id=eq.{{$env.SAM_SOURCE_ID}}&status=in.(published,matched,notified)&last_verified_at=lt.{{new Date(Date.now()-864e5).toISOString()}}&select=id,source_record_id&limit=200",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "Load live SAM notices to recheck",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "load-live-sam-notices-to-recheck",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows=$input.first().json; return (Array.isArray(rows)?rows:[rows]).filter(r=>r.id).map(r=>({json:r}));"
+      },
+      "name": "Split",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "split"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.sam.gov/opportunities/v2/search",
+        "options": {
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "api_key",
+              "value": "={{$env.SAM_GOV_API_KEY}}"
+            },
+            {
+              "name": "noticeid",
+              "value": "={{$json.source_record_id}}"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            },
+            {
+              "name": "postedFrom",
+              "value": "={{ (d=>`${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`)(new Date(Date.now()-364*864e5)) }}"
+            },
+            {
+              "name": "postedTo",
+              "value": "={{ (d=>`${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`)(new Date()) }}"
+            }
+          ]
+        }
+      },
+      "name": "SAM.gov recheck by noticeid",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "sam.gov-recheck-by-noticeid",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((i,idx)=>{const src=$('Split').all()[idx].json; const r=(i.json.opportunitiesData||[])[0];\n const gone=!r || r.active==='No' || /cancel/i.test(r.type||'');\n return {json:{id:src.id, patch: gone?{status:'cancelled',visibility:'internal'}:{last_verified_at:new Date().toISOString(), deadline:r.responseDeadLine||null}}};});"
+      },
+      "name": "Decide status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "decide-status"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/opportunities?id=eq.{{$json.id}}",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.patch) }}"
+      },
+      "name": "Apply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        0
+      ],
+      "id": "apply",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 6 hours": {
+      "main": [
+        [
+          {
+            "node": "Expire past deadline",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Expire past expires_at",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expire past deadline": {
+      "main": [
+        [
+          {
+            "node": "Suppress queued alerts for closed opps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Suppress queued alerts for closed opps": {
+      "main": [
+        [
+          {
+            "node": "Load live SAM notices to recheck",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load live SAM notices to recheck": {
+      "main": [
+        [
+          {
+            "node": "Split",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split": {
+      "main": [
+        [
+          {
+            "node": "SAM.gov recheck by noticeid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAM.gov recheck by noticeid": {
+      "main": [
+        [
+          {
+            "node": "Decide status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide status": {
+      "main": [
+        [
+          {
+            "node": "Apply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "WF-09 Ops and errors"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "lead-marketplace"
+    }
+  ]
+}

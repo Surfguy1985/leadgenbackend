@@ -1,0 +1,391 @@
+{
+  "name": "WF-04 Matching and notification",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF-04 Matching / notification\nTrigger: Supabase Database Webhook on opportunities UPDATE where status becomes 'published' \u2192 POST here with x-shared-secret.\nTrade \u2192 ZIP/ZIP3 \u2192 regulated-trade license gate \u2192 plan check (private leads need paid plan) \u2192 score 40/25/20/10/5 \u2192 dedupe_key unique \u2192 Resend \u2192 dashboard badge (notifications.status).\nTODO before launch: enforce max_alerts_daily per contractor (count today's sent notifications). Verify empty-result handling of Prefer: ignore-duplicates in staging.",
+        "width": 520,
+        "height": 260
+      },
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -300
+      ],
+      "id": "notes"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf04-match",
+        "responseMode": "onReceived",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "name": "Opportunity published (DB webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "opportunity-published-(db-webhook)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "N8N_SHARED",
+          "name": "x-shared-secret header"
+        }
+      },
+      "webhookId": "wf04-match"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/opportunities?id=eq.{{$json.body.record.id}}&status=eq.published&select=id,kind,title,trade,subtrades,zip,city,property_type,expires_at,deadline",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "Load opportunity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "load-opportunity",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/contractor_profiles?trades=cs.{{'{' + $json.trade + '}'}}&accepts_leads=eq.true&select=*,organizations(owner_user_id,subscriptions(plan,status))",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "Load contractors",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "load-contractors",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Mirror of app/src/lib/matching.ts \u2014 weights: trade 40, geo 25, qualifications 20, activity 10, preferences 5\nconst W={trade:40,geo:25,qualifications:20,activity:10,preferences:5}; const REG=['plumbing','electrical','hvac','roofing'];\nconst o = $('Load opportunity').first().json;\nconst out=[];\nfor (const it of $('Load contractors').all()) { const rows = Array.isArray(it.json)?it.json:[it.json];\n for (const c of rows) {\n  if(!c.accepts_leads) continue;\n  if((o.subtrades||[]).some(s=>REG.includes(s)) && c.license_status!=='verified') continue; // never allocate ineligible regulated trade\n  if(!(c.trades||[]).includes(o.trade)) continue;\n  const geo = o.zip && c.zip_codes.includes(o.zip) ? 1 : (o.zip && c.zip_codes.some(z=>z.slice(0,3)===o.zip.slice(0,3)) ? .5 : 0); if(!geo) continue;\n  const plan = c.organizations?.subscriptions?.[0]; const paid = plan && ['active','trialing'].includes(plan.status);\n  if (o.kind==='private_lead' && !paid) continue; // private leads routed to paying members under disclosed terms\n  const qual=(c.license_status==='verified'?.5:0)+(c.insurance_status==='verified'?.5:0);\n  const days=c.last_active_at?(Date.now()-Date.parse(c.last_active_at))/864e5:999; const act=days<=7?1:days<=30?.5:0;\n  const pt=c.preferences?.property_types; const pref=!pt?.length||pt.includes(o.property_type)?1:0;\n  const f={trade:W.trade,geo:geo*W.geo,qualifications:qual*W.qualifications,activity:act*W.activity,preferences:pref*W.preferences};\n  const score=Math.round(Object.values(f).reduce((a,b)=>a+b,0)*100)/100;\n  out.push({json:{opportunity_id:o.id, contractor_id:c.id, owner_user_id:c.organizations.owner_user_id, email:c.alert_email, max_alerts_daily:c.max_alerts_daily, match_score:score, match_factors:f, title:o.title, kind:o.kind, city:o.city, zip:o.zip}});\n }}\nreturn out.sort((a,b)=>b.json.match_score-a.json.match_score);"
+      },
+      "name": "Score (40/25/20/10/5)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "score-(40/25/20/10/5)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/matches?on_conflict=opportunity_id,contractor_id",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ opportunity_id: $json.opportunity_id, contractor_id: $json.contractor_id, match_score: $json.match_score, match_factors: $json.match_factors }) }}"
+      },
+      "name": "Upsert match",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "upsert-match",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/notifications?on_conflict=dedupe_key",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ recipient_id: $(\"Score (40/25/20/10/5)\").item.json.owner_user_id, opportunity_id: $(\"Score (40/25/20/10/5)\").item.json.opportunity_id, channel: \"email\", status: \"queued\", dedupe_key: `opp:${$(\"Score (40/25/20/10/5)\").item.json.opportunity_id}:user:${$(\"Score (40/25/20/10/5)\").item.json.owner_user_id}:email` }) }}"
+      },
+      "name": "Queue notification (dedupe_key)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "queue-notification-(dedupe_key)",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.id }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "Newly queued? (event dedupe)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "newly-queued?-(event-dedupe)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.RESEND_API_KEY}}"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "={{$json.dedupe_key}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$(\"Score (40/25/20/10/5)\").item.json.email], subject: `New ${$(\"Score (40/25/20/10/5)\").item.json.kind === \"public_bid\" ? \"public bid\" : \"verified request\"}: ${$(\"Score (40/25/20/10/5)\").item.json.title}`, html: `<p>${$(\"Score (40/25/20/10/5)\").item.json.city || \"\"} ${$(\"Score (40/25/20/10/5)\").item.json.zip || \"\"}</p><p><a href=\"${$env.APP_URL}/dashboard\">View in your dashboard</a></p><p style=\"font-size:12px\">Match score is a routing heuristic, not a guarantee of work.</p>` }) }}"
+      },
+      "name": "Resend alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        0
+      ],
+      "id": "resend-alert",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/notifications?dedupe_key=eq.{{$('Newly queued? (event dedupe)').item.json.dedupe_key}}",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: \"sent\", sent_at: new Date().toISOString() }) }}"
+      },
+      "name": "Mark sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        0
+      ],
+      "id": "mark-sent",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Opportunity published (DB webhook)": {
+      "main": [
+        [
+          {
+            "node": "Load opportunity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load opportunity": {
+      "main": [
+        [
+          {
+            "node": "Load contractors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load contractors": {
+      "main": [
+        [
+          {
+            "node": "Score (40/25/20/10/5)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score (40/25/20/10/5)": {
+      "main": [
+        [
+          {
+            "node": "Upsert match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert match": {
+      "main": [
+        [
+          {
+            "node": "Queue notification (dedupe_key)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue notification (dedupe_key)": {
+      "main": [
+        [
+          {
+            "node": "Newly queued? (event dedupe)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Newly queued? (event dedupe)": {
+      "main": [
+        [
+          {
+            "node": "Resend alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Resend alert": {
+      "main": [
+        [
+          {
+            "node": "Mark sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "WF-09 Ops and errors"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "lead-marketplace"
+    }
+  ]
+}

@@ -1,0 +1,234 @@
+{
+  "name": "WF-09 Ops and errors",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF-09 Ops and errors\nSet as Error Workflow on WF-01/02/04/06. Error \u2192 record_workflow_failure RPC (exponential backoff 1,2,4,8,16 min; after 5 attempts \u2192 dead_letter) \u2192 email operator \u2192 retry sweep. Failed leads are never silently dropped; dead letters show in /admin.",
+        "width": 520,
+        "height": 260
+      },
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -300
+      ],
+      "id": "notes"
+    },
+    {
+      "parameters": {},
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "error-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const e=$json; return [{json:{workflow:e.workflow?.name||'unknown', node:e.execution?.lastNodeExecuted||null, error:String(e.execution?.error?.message||'').slice(0,2000), payload:{execution_id:e.execution?.id, url:e.execution?.url}}}];"
+      },
+      "name": "Shape failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "shape-failure"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/rpc/record_workflow_failure",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_workflow: $json.workflow, p_node: $json.node, p_error: $json.error, p_payload: $json.payload }) }}"
+      },
+      "name": "Record in workflow_failures",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "record-in-workflow_failures",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.RESEND_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$env.OPS_ALERT_EMAIL], subject: `[ops] ${$(\"Shape failure\").item.json.workflow} failed (${$json[0]?.state || $json.state || \"retrying\"})`, text: `${$(\"Shape failure\").item.json.node}: ${$(\"Shape failure\").item.json.error}\\n${$(\"Shape failure\").item.json.payload.url || \"\"}` }) }}"
+      },
+      "name": "Alert operator (Resend)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "alert-operator-(resend)",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "name": "Retry sweep (every 10 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        240
+      ],
+      "id": "retry-sweep-(every-10-min)"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/workflow_failures?state=eq.retrying&next_retry_at=lt.{{new Date().toISOString()}}&select=*&limit=50",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "Load due retries",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        240
+      ],
+      "id": "load-due-retries",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Re-run via n8n API: POST {N8N_API_URL}/executions/{id}/retry (requires n8n API key credential),\n// or for WF-01 handoffs re-POST payload to the WF-01 webhook. Items stay visible in /admin until resolved.\nreturn $input.all();"
+      },
+      "name": "Re-dispatch note",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        240
+      ],
+      "id": "re-dispatch-note"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Shape failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape failure": {
+      "main": [
+        [
+          {
+            "node": "Record in workflow_failures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record in workflow_failures": {
+      "main": [
+        [
+          {
+            "node": "Alert operator (Resend)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry sweep (every 10 min)": {
+      "main": [
+        [
+          {
+            "node": "Load due retries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load due retries": {
+      "main": [
+        [
+          {
+            "node": "Re-dispatch note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "lead-marketplace"
+    }
+  ]
+}

@@ -1,0 +1,413 @@
+{
+  "name": "WF-02 SAM.gov procurement ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF-02 SAM.gov Get Opportunities Public API\nGET https://api.sam.gov/opportunities/v2/search (postedFrom/postedTo MM/dd/yyyy, limit<=1000, offset). Filters: state=TX, property-service NAICS, place-of-performance ZIP3 in DFW.\nStores permitted metadata only + sha256 hash; unique (source_id, source_record_id[, hash]) prevents duplicates. Public bids are labeled non-exclusive and link to the original notice.\nSet env SAM_GOV_API_KEY, SAM_SOURCE_ID (row in sources). Daily request quota depends on SAM.gov account role.\nAdd Texas SmartBuy / city portals as separate branches only after terms review.",
+        "width": 520,
+        "height": 260
+      },
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -300
+      ],
+      "id": "notes"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6,15 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Twice daily",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "twice-daily"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fmt=d=>`${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;\nconst to=new Date(), from=new Date(Date.now()-3*864e5);\nconst naics=[\"561730\", \"561720\", \"561210\", \"561790\", \"236220\", \"236118\", \"238160\", \"238220\", \"238210\", \"238320\", \"238990\", \"562111\"];\nreturn naics.map(n=>({json:{ncode:n,postedFrom:fmt(from),postedTo:fmt(to),offset:0}}));"
+      },
+      "name": "Build NAICS queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "build-naics-queries"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.sam.gov/opportunities/v2/search",
+        "options": {
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "api_key",
+              "value": "={{$env.SAM_GOV_API_KEY}}"
+            },
+            {
+              "name": "postedFrom",
+              "value": "={{$json.postedFrom}}"
+            },
+            {
+              "name": "postedTo",
+              "value": "={{$json.postedTo}}"
+            },
+            {
+              "name": "state",
+              "value": "TX"
+            },
+            {
+              "name": "ncode",
+              "value": "={{$json.ncode}}"
+            },
+            {
+              "name": "ptype",
+              "value": "o,k,p,r"
+            },
+            {
+              "name": "limit",
+              "value": "1000"
+            },
+            {
+              "name": "offset",
+              "value": "={{$json.offset}}"
+            }
+          ]
+        }
+      },
+      "name": "SAM.gov Get Opportunities",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "sam.gov-get-opportunities",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst crypto = require('crypto');\nconst DFW = ['750','751','752','753','760','761','762']; // DFW-area ZIP3 prefixes; tune in staging\nconst out = [];\nfor (const item of $input.all()) {\n  const recs = item.json.opportunitiesData || [];\n  if ((item.json.totalRecords||0) > (item.json.offset||0) + recs.length) out.push({json:{_needsNextPage:true, totalRecords:item.json.totalRecords}}); // paginate: raise window or loop\n  for (const r of recs) {\n    const pop = r.placeOfPerformance || {};\n    const zip = (pop.zip || '').slice(0,5) || null;\n    const isDFW = zip && DFW.includes(zip.slice(0,3));\n    if (!isDFW) continue; // Texas-wide notices outside DFW are skipped for the pilot\n    // Store only permitted metadata (no POC personal data, no full protected description)\n    const permitted = { noticeId: r.noticeId, title: r.title, solicitationNumber: r.solicitationNumber, type: r.type, postedDate: r.postedDate,\n      responseDeadLine: r.responseDeadLine, naicsCode: r.naicsCode, setAside: r.typeOfSetAsideDescription, active: r.active,\n      agency: r.fullParentPathName, city: pop.city?.name || null, state: pop.state?.code || 'TX', zip, uiLink: `https://sam.gov/opp/${r.noticeId}/view` };\n    const payload_hash = crypto.createHash('sha256').update(JSON.stringify(permitted)).digest('hex');\n    out.push({ json: { source_record_id: r.noticeId, source_url: permitted.uiLink, payload_hash, permitted_payload: permitted } });\n  }\n}\nreturn out.filter(o => !o.json._needsNextPage);"
+      },
+      "name": "Normalize + DFW filter + hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "normalize-+-dfw-filter-+-hash"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/raw_ingestions?on_conflict=source_id,source_record_id,payload_hash",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source_id: $env.SAM_SOURCE_ID, source_record_id: $json.source_record_id, source_url: $json.source_url, payload_hash: $json.payload_hash, permitted_payload: $json.permitted_payload }) }}"
+      },
+      "name": "Insert raw_ingestion (dedupe)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "insert-raw_ingestion-(dedupe)",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.id }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "New or changed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "new-or-changed?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now=Date.now();\nreturn $input.all().filter(i=>{const p=i.json.permitted_payload||{}; const d=p.responseDeadLine?Date.parse(p.responseDeadLine):null; return p.active!=='No' && (!d || d>now);});"
+      },
+      "name": "Skip if inactive/expired",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "skip-if-inactive/expired"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.APP_URL}}/api/ai/classify",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-shared-secret",
+              "value": "={{$env.N8N_WEBHOOK_SHARED_SECRET}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ raw_ingestion_id: $json.id, source_kind: \"official_api\", has_consent: false, text: JSON.stringify($json.permitted_payload) }) }}"
+      },
+      "name": "Grok classify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        0
+      ],
+      "id": "grok-classify",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "\nreturn $input.all().map((i, idx) => {\n  const raw = $('Skip if inactive/expired').all()[idx].json; const p = raw.permitted_payload; const c = i.json.classification || {};\n  return { json: { kind: 'public_bid', title: String(p.title).slice(0,200), summary: c.summary || null, trade: c.trade || 'government_procurement',\n    subtrades: c.subtrades || [], property_type: 'government', city: p.city, state: 'TX', zip: p.zip,\n    deadline: p.responseDeadLine || null, source_id: $env.SAM_SOURCE_ID, source_url: p.uiLink, source_record_id: p.noticeId,\n    last_verified_at: new Date().toISOString(),\n    // Publish only when classification passed all deterministic checks; otherwise human review\n    status: (i.json.ok && !i.json.needs_review) ? 'published' : 'needs_review',\n    visibility: (i.json.ok && !i.json.needs_review) ? 'public' : 'internal',\n    published_at: (i.json.ok && !i.json.needs_review) ? new Date().toISOString() : null } };\n});"
+      },
+      "name": "Map to opportunity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        0
+      ],
+      "id": "map-to-opportunity"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/opportunities?on_conflict=source_id,source_record_id",
+        "options": {
+          "timeout": 30000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "name": "Upsert opportunity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        0
+      ],
+      "id": "upsert-opportunity",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_SERVICE",
+          "name": "Supabase service role (apikey + Authorization headers)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Twice daily": {
+      "main": [
+        [
+          {
+            "node": "Build NAICS queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build NAICS queries": {
+      "main": [
+        [
+          {
+            "node": "SAM.gov Get Opportunities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAM.gov Get Opportunities": {
+      "main": [
+        [
+          {
+            "node": "Normalize + DFW filter + hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + DFW filter + hash": {
+      "main": [
+        [
+          {
+            "node": "Insert raw_ingestion (dedupe)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert raw_ingestion (dedupe)": {
+      "main": [
+        [
+          {
+            "node": "New or changed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New or changed?": {
+      "main": [
+        [
+          {
+            "node": "Skip if inactive/expired",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Skip if inactive/expired": {
+      "main": [
+        [
+          {
+            "node": "Grok classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok classify": {
+      "main": [
+        [
+          {
+            "node": "Map to opportunity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map to opportunity": {
+      "main": [
+        [
+          {
+            "node": "Upsert opportunity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "WF-09 Ops and errors"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "lead-marketplace"
+    }
+  ]
+}
