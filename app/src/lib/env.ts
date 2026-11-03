@@ -15,6 +15,7 @@ export const env = {
   stripeWebhookSecret: () => req("STRIPE_WEBHOOK_SECRET"),
   priceLocalPro: () => req("STRIPE_PRICE_LOCAL_PRO"),
   priceMultiTrade: () => req("STRIPE_PRICE_MULTI_TRADE"),
+  appUrl: () => process.env.NEXT_PUBLIC_APP_URL || "https://archangel-leadgen.vercel.app",
   intakeSecret: () => req("INTAKE_SHARED_SECRET"),
   n8nSecret: () => req("N8N_WEBHOOK_SHARED_SECRET"),
   n8nIntakeWebhook: () => process.env.N8N_WF01_WEBHOOK_URL,

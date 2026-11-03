@@ -7,7 +7,7 @@ export type SamNotice = {
 // Facility / construction NAICS relevant to Crewforthat trades
 const NAICS: [string, string][] = [["561730", "landscaping"], ["561720", "cleaning"], ["561790", "cleaning"], ["561210", "commercial_construction"], ["236", "commercial_construction"], ["237", "commercial_construction"], ["238", "commercial_construction"]];
 export const tradeForNaics = (n?: string) => (n ? NAICS.find(([p]) => n.startsWith(p))?.[1] : undefined) ?? null;
-const SKIP_TYPES = /award notice|justification|sale of surplus|intent to bundle/i;
+const SKIP_TYPES = /award notice|cancel|justification|sale of surplus|intent to bundle/i;
 
 export function samQuery(from: Date, to: Date, offset = 0, limit = 100) {
   const d = (x: Date) => `${String(x.getUTCMonth() + 1).padStart(2, "0")}/${String(x.getUTCDate()).padStart(2, "0")}/${x.getUTCFullYear()}`;
