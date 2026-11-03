@@ -94,7 +94,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$(\"Intake webhook\").item.json.body.email], subject: \"Archangel Advertising: confirm your service request\", html: `<p>Thanks for using Archangel Advertising. Please confirm your request so we can share it with up to 5 eligible, matched contractors.</p><p><a href=\"${$(\"Intake webhook\").item.json.body.verify_url}\">Confirm request</a></p><p>No contractor is guaranteed. You can withdraw anytime at ${$env.APP_URL}/delete-data.</p>` }) }}"
+        "jsonBody": "={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$(\"Intake webhook\").item.json.body.email], subject: \"Crewforthat: confirm your service request\", html: `<p>Thanks for using Crewforthat. Please confirm your request so we can share it with up to 5 eligible, matched contractors.</p><p><a href=\"${$(\"Intake webhook\").item.json.body.verify_url}\">Confirm request</a></p><p>No contractor is guaranteed. You can withdraw anytime at ${$env.APP_URL}/delete-data.</p>` }) }}"
       },
       "name": "Send verification email",
       "type": "n8n-nodes-base.httpRequest",

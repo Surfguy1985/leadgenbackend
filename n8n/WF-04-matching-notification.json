@@ -241,7 +241,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$(\"Score (40/25/20/10/5)\").item.json.email], subject: `New ${$(\"Score (40/25/20/10/5)\").item.json.kind === \"public_bid\" ? \"public bid\" : \"verified request\"}: ${$(\"Score (40/25/20/10/5)\").item.json.title}`, html: `<p>${$(\"Score (40/25/20/10/5)\").item.json.city || \"\"} ${$(\"Score (40/25/20/10/5)\").item.json.zip || \"\"}</p><p><a href=\"${$env.APP_URL}/dashboard\">View in your dashboard</a></p><p style=\"font-size:12px\">Match score is a routing heuristic, not a guarantee of work. Sent by Archangel Advertising.</p>` }) }}"
+        "jsonBody": "={{ JSON.stringify({ from: $env.ALERT_FROM_EMAIL, to: [$(\"Score (40/25/20/10/5)\").item.json.email], subject: `New ${$(\"Score (40/25/20/10/5)\").item.json.kind === \"public_bid\" ? \"public bid\" : \"verified request\"}: ${$(\"Score (40/25/20/10/5)\").item.json.title}`, html: `<p>${$(\"Score (40/25/20/10/5)\").item.json.city || \"\"} ${$(\"Score (40/25/20/10/5)\").item.json.zip || \"\"}</p><p><a href=\"${$env.APP_URL}/dashboard\">View in your dashboard</a></p><p style=\"font-size:12px\">Match score is a routing heuristic, not a guarantee of work. Sent by Crewforthat.</p>` }) }}"
       },
       "name": "Resend alert",
       "type": "n8n-nodes-base.httpRequest",

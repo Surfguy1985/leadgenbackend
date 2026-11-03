@@ -1,6 +1,6 @@
-# Archangel Advertising: Texas property-services lead marketplace (backend)
+# Crewforthat: Texas property-services lead marketplace (backend)
 
-Brand: **Archangel Advertising**. Public bids (SAM.gov, WF-02) cover all of Texas; private homeowner/property-manager leads are a DFW pilot and are shared with **up to 5** matched paying contractors (target minimum 3; fewer than 3 is flagged for ops review). The free plan sees public bids only.
+Brand: **Crewforthat** (decided 2026-11-03; replaces Archangel Advertising / WORKLINE). The Vercel project slug `archangel-leadgen` is infrastructure only. Public bids (SAM.gov, WF-02) cover all of Texas; private homeowner/property-manager leads are a DFW pilot and are shared with **up to 5** matched paying contractors (target minimum 3; fewer than 3 is flagged for ops review). The free plan sees public bids only.
 
 Follows the implementation spec v1.0 (2026-11-03). Public pages live in **Webflow**. Dashboard, admin, and API live in a small **Next.js** app (`/app`).
 No social scraping and no logged-in bots. Social and community supply comes only through referral links and voluntary submissions (WF-03, not yet built).
