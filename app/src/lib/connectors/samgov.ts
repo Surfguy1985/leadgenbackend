@@ -39,16 +39,16 @@ export async function runSamGov({ dryRun = true, days = 3, maxPages = 2 } = {}) 
   return withIngestionRun(src, async (runId) => {
     const db = adminDb(); const { notices } = await pull(src, days, maxPages);
     const { data: s } = await db.from("sources").select("current_rights_id").eq("id", src).single();
-    let created = 0, updated = 0;
+    let created = 0, updated = 0, failed = 0; const errors: string[] = [];
     for (const n of notices) {
       const m = mapNotice(n); if (!m) continue;
       const hash = createHash("sha256").update(JSON.stringify(n)).digest("hex");
       await db.from("raw_ingestions").upsert({ source_id: src, source_record_id: n.noticeId, source_url: m.source_url, payload_hash: hash, permitted_payload: n, ingestion_run_id: runId, processing_status: "processed" }, { onConflict: "source_id,source_record_id,payload_hash", ignoreDuplicates: true });
       const { data: ex } = await db.from("opportunities").select("id").eq("source_id", src).eq("source_record_id", n.noticeId).maybeSingle();
       const row = { ...m, source_id: src, rights_id: s?.current_rights_id, status: "published", visibility: "public", verification_status: "verified", last_checked_at: new Date().toISOString(), last_verified_at: new Date().toISOString(), published_at: n.postedDate ? new Date(n.postedDate).toISOString() : new Date().toISOString() };
-      if (ex) { await db.from("opportunities").update({ ...row, published_at: undefined }).eq("id", ex.id); updated++; }
-      else { const { error } = await db.from("opportunities").insert(row); if (!error) created++; }
+      if (ex) { const { error } = await db.from("opportunities").update({ ...row, published_at: undefined }).eq("id", ex.id); if (error) { failed++; errors.push(error.message); } else updated++; }
+      else { const { error } = await db.from("opportunities").insert(row); if (error) { failed++; errors.push(error.message); } else created++; }
     }
-    return { new_count: created, updated_count: updated, result: { created, updated, fetched: notices.length } };
+    return { new_count: created, updated_count: updated, result: { created, updated, failed, errors: [...new Set(errors)].slice(0, 3), fetched: notices.length } };
   });
 }

@@ -20,6 +20,7 @@ export function mapNotice(n: SamNotice, now = new Date()) {
   if ((n.placeOfPerformance?.state?.code ?? "").toUpperCase() !== "TX") return null;
   if (n.active && n.active.toLowerCase() !== "yes") return null;
   if (SKIP_TYPES.test(`${n.type ?? ""} ${n.baseType ?? ""}`)) return null;
+  if (/^\s*(cancel|cancellation|amendment.*cancel)/i.test(n.title) || /\bcancel(l)?ation\b/i.test(n.title)) return null;
   const trade = tradeForNaics(n.naicsCode); if (!trade) return null;
   const deadline = n.responseDeadLine ? new Date(n.responseDeadLine) : null;
   if (deadline && !isNaN(+deadline) && deadline < now) return null;
@@ -31,6 +32,6 @@ export function mapNotice(n: SamNotice, now = new Date()) {
     city: n.placeOfPerformance?.city?.name ?? null, state: "TX", zip: /^\d{5}/.test(n.placeOfPerformance?.zip ?? "") ? n.placeOfPerformance!.zip!.slice(0, 5) : null,
     geographic_scope: n.placeOfPerformance?.city?.name ? "city" : "statewide", deadline: deadline && !isNaN(+deadline) ? deadline.toISOString() : null,
     hide_after: deadline && !isNaN(+deadline) ? deadline.toISOString() : null, source_url: ui, official_apply_url: ui,
-    organization_ref: agency || null, is_inferred: false, reliability: "official",
+    is_inferred: false, reliability: "official",
   };
 }
