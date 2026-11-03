@@ -9,9 +9,13 @@
   <select class="pj-field" name="property_type"><option>residential</option><option>multifamily</option><option>commercial</option></select>
   <textarea class="pj-field" name="description" required minlength="10" placeholder="What do you need done?"></textarea>
   <input class="pj-field" name="timeline" placeholder="When? (e.g. next 2 weeks)">
+  <select class="pj-field" name="urgency"><option value="normal">Within a few weeks</option><option value="urgent">Urgent (next 72 hours)</option><option value="recurring">Recurring service</option></select>
+  <select class="pj-field" name="submitter_kind"><option value="homeowner">I'm the homeowner</option><option value="property_manager">I manage this property</option></select>
   <input name="website" style="display:none" tabindex="-1" autocomplete="off">
   <label class="pj-consent"><input type="checkbox" name="consent_share" value="true" required>
     I agree to share this request and my contact details with up to 5 eligible, matched contractors through Crewforthat so they can contact me about this job. I can withdraw at any time. No contractor or outcome is guaranteed.</label>
+  <label class="pj-consent"><input type="checkbox" name="consent_public_listing" value="true">
+    Optional: show a non-identifying summary of this job (trade, city, timing, no name/address/contact) on Crewforthat's public job board. I can unlist it at any time.</label>
   <label class="pj-consent"><input type="checkbox" name="consent_privacy" value="true" required> I have read the <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</label>
   <div class="cf-turnstile" data-sitekey="0x4AAAAAAFykd3724PLNQGyS"></div>
   <button class="pj-submit" type="submit">Submit request</button>
@@ -26,6 +30,7 @@
     data.submission_id = data.submission_id || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random());
     data.consent_share = f.consent_share.checked ? 'true' : 'false';
     data.consent_privacy = f.consent_privacy.checked ? 'true' : 'false';
+    data.consent_public_listing = f.consent_public_listing.checked ? 'true' : 'false';
     try {
       var r = await fetch('https://archangel-leadgen.vercel.app/api/intake', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
       var j = await r.json();

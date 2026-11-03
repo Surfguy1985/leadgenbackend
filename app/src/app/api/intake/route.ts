@@ -6,6 +6,7 @@ import { clientIp, rateLimit, safeEqual } from "@/lib/rateLimit";
 import { env, missingEnv } from "@/lib/env";
 import { preflight, withCors } from "@/lib/cors";
 import { normalizeScope, verifyToken } from "@/lib/scope";
+import { isDfwZip, lifecycleDates, newToken, CONSENT_TEXT } from "@/lib/homeowner";
 
 export const runtime = "nodejs";
 
@@ -45,7 +46,12 @@ async function handle(req: Request): Promise<Response> {
   const { data: existing } = await db.from("opportunities").select("id,status").eq("submission_id", f.submission_id).maybeSingle();
   if (existing) return NextResponse.json({ ok: true, opportunity_id: existing.id, duplicate: true });
 
+  const { data: pol } = await db.from("app_settings").select("value").eq("key", "archive_policy").maybeSingle();
+  const urgency = f.urgency ?? "normal";
+  const dates = lifecycleDates(urgency, new Date(), pol?.value ?? undefined);
+  const inMarket = isDfwZip(f.zip);
   const { data: opp, error } = await db.from("opportunities").insert({
+    listing_type: "direct_verified", urgency, geographic_scope: "zip", ...dates,
     kind: "private_lead", title: `Service request in ${f.city || f.zip}`, summary: null, trade: "other",
     property_type: f.property_type ?? null, city: f.city ?? null, zip: f.zip, submission_id: f.submission_id, scope_hash,
     status: "ingested", visibility: "internal", verification_status: "pending",
@@ -56,11 +62,21 @@ async function handle(req: Request): Promise<Response> {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 
+  const proofBase = { channel: "webflow_form", ip_hash: createHash("sha256").update(ip).digest("hex"), ua: req.headers.get("user-agent"), at: new Date().toISOString() };
   const { data: consent } = await db.from("consents").insert({
-    opportunity_id: opp.id, purpose: "share_request_with_eligible_contractors", sharing_scope: "matched_eligible_contractors",
+    opportunity_id: opp.id, purpose: "contact_share", sharing_scope: "up_to_5_matched_contractors",
     privacy_version: env.privacyVersion(),
-    proof: { channel: "webflow_form", ip_hash: createHash("sha256").update(ip).digest("hex"), ua: req.headers.get("user-agent"), consent_share: true, consent_privacy: true, consent_text: "I agree to share this request and my contact details with up to 5 eligible, matched contractors through Crewforthat so they can contact me about this job. I can withdraw at any time. No contractor or outcome is guaranteed.", max_recipients: 5, at: new Date().toISOString() },
+    proof: { ...proofBase, consent_share: true, consent_privacy: true, consent_text: CONSENT_TEXT.contact_share, max_recipients: 5 },
   }).select("id").single();
+  let publicConsentId: string | null = null;
+  if (f.consent_public_listing === "true") {
+    const { data: pc } = await db.from("consents").insert({ opportunity_id: opp.id, purpose: "public_listing", sharing_scope: "non_identifying_summary", privacy_version: env.privacyVersion(), proof: { ...proofBase, consent_text: CONSENT_TEXT.public_listing } }).select("id").single();
+    publicConsentId = pc?.id ?? null;
+  }
+  await db.from("job_submissions").insert({ opportunity_id: opp.id, submitter_kind: f.submitter_kind ?? "homeowner", organization_name: f.organization_name ?? null, contact_share_consent_id: consent?.id, public_listing_consent_id: publicConsentId });
+  const manage = newToken();
+  await db.from("manage_tokens").insert({ opportunity_id: opp.id, token_hash: manage.hash, purpose: "manage", expires_at: new Date(Date.now() + 60 * 24 * 3600_000).toISOString() });
+  if (!inMarket) await db.from("moderation_queue").insert({ opportunity_id: opp.id, reason: "out_of_market", details: { zip: f.zip, market: "DFW" } });
   await db.from("opportunities").update({ consent_id: consent?.id }).eq("id", opp.id);
   await db.from("lead_contacts").insert({ opportunity_id: opp.id, contact_name: f.name, email: f.email, phone: f.phone || null, address: f.address ?? null });
 
@@ -71,13 +87,15 @@ async function handle(req: Request): Promise<Response> {
 
   // Hand off to n8n WF-01 (classification, email verification, review, matching)
   const hook = env.n8nIntakeWebhook();
-  if (hook) {
+  if (hook && inMarket) {
     await fetch(hook, { method: "POST", headers: { "Content-Type": "application/json", "x-shared-secret": env.n8nSecret() },
       body: JSON.stringify({ opportunity_id: opp.id, text: `${f.description}\nTimeline: ${f.timeline ?? "not stated"}\nZIP: ${f.zip}`, email: f.email,
-        verify_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/intake/verify?id=${opp.id}&t=${verifyToken(opp.id)}` }) })
+        verify_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/intake/verify?id=${opp.id}&t=${verifyToken(opp.id)}`,
+        manage_url: `${process.env.NEXT_PUBLIC_APP_URL}/manage?t=${manage.token}`, in_market: inMarket, urgency }) })
       .catch(async (e) => { await db.from("workflow_failures").insert({ workflow: "WF-01", node: "handoff", payload: { opportunity_id: opp.id }, error: String(e), next_retry_at: new Date(Date.now() + 60_000).toISOString() }); });
   }
-  return NextResponse.json({ ok: true, opportunity_id: opp.id, next: "Check your email to verify your request." });
+  return NextResponse.json({ ok: true, opportunity_id: opp.id, in_market: inMarket,
+    next: inMarket ? "Check your email to verify your request. Your link to manage or withdraw it is in that email." : "Thanks! We currently match direct requests in the Dallas–Fort Worth area. We saved your request and will reach out if we can help." });
 }
 
 export async function OPTIONS(req: Request) { return preflight(req); }

@@ -41,4 +41,10 @@ export const IntakeForm = z.object({
   consent_share: z.literal("true", { errorMap: () => ({ message: "Lead-sharing consent is required" }) }),
   consent_privacy: z.literal("true", { errorMap: () => ({ message: "Privacy acknowledgement is required" }) }),
   website: z.string().max(0).optional(), // honeypot
+  // v2 (all optional so the old embed keeps working)
+  urgency: z.enum(["urgent", "normal", "recurring"]).optional(),
+  submitter_kind: z.enum(["homeowner", "property_manager"]).optional(),
+  organization_name: z.string().max(160).optional(),
+  consent_public_listing: z.enum(["true", "false"]).optional(), // separate, optional: non-identifying public summary
 });
+export const ManageAction = z.object({ token: z.string().min(32).max(128), action: z.enum(["status", "withdraw", "close", "reconfirm", "unlist"]), reason: z.string().max(300).optional() });

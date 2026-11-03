@@ -88,3 +88,8 @@ Keep the Webflow page as marketing, with a button to `{APP_URL}/login?next=/dash
 
 ## 5. Legal pages
 `/privacy`, `/terms`, `/contact`, `/delete-data`. Add the delete-data form as an embed posting to a future `/api/delete-request` endpoint, or link to `mailto:`. Get a legal review before launch.
+
+## Homeowner flow v2 (Crewforthat)
+- Canonical embed source: `webflow/post-job-embed.html` (adds urgency, submitter type, and a **separate optional** public-listing consent; contact-share consent stays required, max 5 contractors).
+- Direct requests are matched only in DFW ZIPs; out-of-market requests are saved, queued for review (`out_of_market`), and not sent to n8n matching.
+- Each request gets a hashed, 60-day manage token; the email (n8n WF-01, `manage_url`) links to `/manage` for status / still-needed / unlist / close / withdraw.
