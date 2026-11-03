@@ -5,7 +5,7 @@ import { SYSTEM_PROMPT, wrapUntrusted, xaiStructured } from "@/lib/xai";
 import { reviewReasons } from "@/lib/review";
 import { adminDb, audit } from "@/lib/supabase";
 import { safeEqual } from "@/lib/rateLimit";
-import { env } from "@/lib/env";
+import { env, missingEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
@@ -20,7 +20,8 @@ const Body = z.object({
 /** Server-to-server only (n8n WF-01/WF-02, /api/intake). Auth: x-shared-secret. */
 export async function POST(req: Request) {
   const secret = req.headers.get("x-shared-secret") ?? "";
-  if (!safeEqual(secret, env.n8nSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!process.env.N8N_WEBHOOK_SHARED_SECRET || !safeEqual(secret, env.n8nSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const nc = missingEnv("XAI_API_KEY"); if (nc) return nc;
   const b = Body.safeParse(await req.json().catch(() => null));
   if (!b.success) return NextResponse.json({ error: "bad_request", issues: b.error.issues }, { status: 400 });
   const { text, source_kind, has_consent, opportunity_id, raw_ingestion_id } = b.data;

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { IntakeForm } from "@/lib/schemas";
 import { adminDb, audit } from "@/lib/supabase";
 import { clientIp, rateLimit, safeEqual } from "@/lib/rateLimit";
-import { env } from "@/lib/env";
+import { env, missingEnv } from "@/lib/env";
 import { normalizeScope, verifyToken } from "@/lib/scope";
 
 export const runtime = "nodejs";
@@ -30,7 +30,9 @@ export async function POST(req: Request) {
   const f = parsed.data;
   if (f.website) return NextResponse.json({ ok: true }); // honeypot: silently accept
 
+  const nc = missingEnv("INTAKE_SHARED_SECRET", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"); if (nc) return nc;
   const secretOk = safeEqual(req.headers.get("x-intake-secret") ?? "", env.intakeSecret());
+  if (!secretOk && !process.env.TURNSTILE_SECRET_KEY) return NextResponse.json({ error: "not_configured", missing: ["TURNSTILE_SECRET_KEY"] }, { status: 503 });
   if (!secretOk && !(await verifyTurnstile(f["cf-turnstile-response"], ip))) return NextResponse.json({ error: "captcha_failed" }, { status: 403 });
 
   const db = adminDb();

@@ -4,7 +4,7 @@ import { currentUser } from "@/lib/supabase";
 import { SYSTEM_PROMPT, xaiChat } from "@/lib/xai";
 import { runTool, toolDefs } from "@/lib/grokTools";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
-import { env } from "@/lib/env";
+import { env, missingEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
@@ -15,6 +15,7 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  const nc = missingEnv("XAI_API_KEY"); if (nc) return nc;
   const u = await currentUser();
   if (!u) return NextResponse.json({ error: "sign_in_required" }, { status: 401 });
   if (!rateLimit(`chat:${u.user.id}`, 20, 60_000)) return NextResponse.json({ error: "rate_limited" }, { status: 429 });

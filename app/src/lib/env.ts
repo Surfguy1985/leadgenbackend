@@ -21,3 +21,9 @@ export const env = {
   turnstileSecret: () => req("TURNSTILE_SECRET_KEY"),
   privacyVersion: () => process.env.PRIVACY_VERSION || "2026-11-03",
 };
+
+/** Graceful degradation: returns a 503 JSON response when optional integrations aren't configured yet. */
+export function missingEnv(...names: string[]): Response | null {
+  const missing = names.filter(n => !process.env[n]);
+  return missing.length ? Response.json({ error: "not_configured", missing }, { status: 503 }) : null;
+}

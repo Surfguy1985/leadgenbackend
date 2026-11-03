@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { adminDb, audit } from "@/lib/supabase";
-import { env } from "@/lib/env";
+import { env, missingEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
@@ -14,6 +14,7 @@ function planFor(priceId: string | undefined) {
 }
 
 export async function POST(req: Request) {
+  const nc = missingEnv("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"); if (nc) return nc;
   const stripe = new Stripe(env.stripeSecret());
   const sig = req.headers.get("stripe-signature");
   const body = await req.text(); // raw body required for signature verification

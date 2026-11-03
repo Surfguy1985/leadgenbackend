@@ -11,9 +11,9 @@ const LABEL: Record<string, string> = { public_bid: "Public bid (not exclusive)"
 /** Mirrors ONLY approved public opportunities into the Webflow "Opportunities" CMS collection (Data API v2, live items).
  *  Never sends private leads, contacts, or test data. Trigger: n8n schedule (every 15 min) or after admin approval. */
 export async function POST(req: Request) {
-  if (!safeEqual(req.headers.get("x-shared-secret") ?? "", env.n8nSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!process.env.N8N_WEBHOOK_SHARED_SECRET || !safeEqual(req.headers.get("x-shared-secret") ?? "", env.n8nSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const token = process.env.WEBFLOW_API_TOKEN, coll = process.env.WEBFLOW_OPPORTUNITIES_COLLECTION_ID;
-  if (!token || !coll) return NextResponse.json({ error: "webflow_not_configured" }, { status: 500 });
+  if (!token || !coll) return NextResponse.json({ error: "not_configured", missing: ["WEBFLOW_API_TOKEN","WEBFLOW_OPPORTUNITIES_COLLECTION_ID"] }, { status: 503 });
   const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   const db = adminDb();
 
