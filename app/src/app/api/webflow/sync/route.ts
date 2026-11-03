@@ -10,14 +10,16 @@ const WF = "https://api.webflow.com/v2";
 type Sync = { created: number; updated: number; removed: number; errors: number };
 async function upsertLive(coll: string, h: Record<string, string>, itemId: string | null, isLive: boolean, fieldData: object, s: Sync): Promise<{ ok: boolean; itemId: string | null; stop?: boolean }> {
   let res: Response | null = null;
-  if (isLive && !itemId) { res = await fetch(`${WF}/collections/${coll}/items/live`, { method: "POST", headers: h, body: JSON.stringify({ isDraft: false, isArchived: false, fieldData }) }); if (res.ok) { itemId = ((await res.json()) as { id: string }).id; s.created++; } }
-  else if (isLive && itemId) { res = await fetch(`${WF}/collections/${coll}/items/${itemId}/live`, { method: "PATCH", headers: h, body: JSON.stringify({ isDraft: false, isArchived: false, fieldData }) }); if (res.ok) s.updated++; }
-  else if (!isLive && itemId) { res = await fetch(`${WF}/collections/${coll}/items/${itemId}/live`, { method: "DELETE", headers: h }); if (res.ok || res.status === 404) { s.removed++; itemId = null; } }
+  // STAGED items only (go live on the next site publish, which is a human decision). Never the /live endpoints.
+  if (isLive && !itemId) { res = await fetch(`${WF}/collections/${coll}/items`, { method: "POST", headers: h, body: JSON.stringify({ isDraft: false, isArchived: false, fieldData }) }); if (res.ok) { itemId = ((await res.json()) as { id: string }).id; s.created++; } }
+  else if (isLive && itemId) { res = await fetch(`${WF}/collections/${coll}/items/${itemId}`, { method: "PATCH", headers: h, body: JSON.stringify({ isDraft: false, isArchived: false, fieldData }) }); if (res.ok) s.updated++; }
+  else if (!isLive && itemId) { await fetch(`${WF}/collections/${coll}/items/${itemId}/live`, { method: "DELETE", headers: h }); // unpublish if it was ever live
+    res = await fetch(`${WF}/collections/${coll}/items/${itemId}`, { method: "DELETE", headers: h }); if (res.ok || res.status === 404) { s.removed++; itemId = null; } }
   if (res && !res.ok && res.status !== 404) { s.errors++; return { ok: false, itemId, stop: res.status === 429 }; }
   return { ok: true, itemId };
 }
 
-/** Mirrors ONLY rows the public may see into Webflow CMS (live items): Opportunities (3 tabs) + Directory.
+/** Mirrors ONLY rows the public may see into Webflow CMS (staged items; nothing is published): Opportunities (3 tabs) + Directory.
  *  Liveness for opportunities is decided by the anon RLS view itself (single source of truth for rights, hide_after, archive). */
 export async function POST(req: Request) {
   if (!process.env.N8N_WEBHOOK_SHARED_SECRET || !safeEqual(req.headers.get("x-shared-secret") ?? "", env.n8nSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
