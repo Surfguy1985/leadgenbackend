@@ -21,6 +21,8 @@ insert into profiles(user_id, role) values ('${A}','admin'),('${C1}','contractor
 insert into organizations(id, owner_user_id, business_name) values ('10000000-0000-0000-0000-000000000001','${C1}','Org1'),('10000000-0000-0000-0000-000000000002','${C2}','Org2');
 insert into contractor_profiles(id, organization_id, trades) values ('20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','{landscaping}'),('20000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000002','{landscaping}');
 insert into sources(id,name,kind,active,reuse_allowed) values ('30000000-0000-0000-0000-000000000001','SAM.gov','official_api',true,true);
+insert into source_rights(id,source_id,approval_version,can_fetch,can_publish_summary,approved_at) values ('31000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001',1,true,true,now());
+update sources set enabled=true, current_rights_id='31000000-0000-0000-0000-000000000001' where id='30000000-0000-0000-0000-000000000001';
 insert into opportunities(id,kind,title,trade,status,visibility,source_id,source_record_id) values
  ('40000000-0000-0000-0000-000000000001','public_bid','Pub bid','landscaping','published','public','30000000-0000-0000-0000-000000000001','N1'),
  ('40000000-0000-0000-0000-000000000003','public_bid','Draft bid','landscaping','needs_review','public','30000000-0000-0000-0000-000000000001','N2');
