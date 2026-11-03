@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Classification } from "@/lib/schemas";
 import { SYSTEM_PROMPT, wrapUntrusted, xaiStructured } from "@/lib/xai";
 import { reviewReasons } from "@/lib/review";
+import { looksLikeInjection } from "@/lib/aiGuard";
 import { adminDb, audit } from "@/lib/supabase";
 import { safeEqual } from "@/lib/rateLimit";
 import { env, missingEnv } from "@/lib/env";
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
 
   if (dry_run) {
     if (!r.ok) return NextResponse.json({ ok: false, needs_review: true, error: r.error, dry_run: true });
-    const d = r.data; if (!has_consent) d.consent_status = "not_granted"; if (source_kind !== "official_api" && !has_consent) d.verification_status = "unverified";
+    const d = r.data; if (looksLikeInjection(text)) d.suspected_prompt_injection = true; if (!has_consent) d.consent_status = "not_granted"; if (source_kind !== "official_api" && !has_consent) d.verification_status = "unverified";
     const rr = reviewReasons(d, { sourceKind: source_kind, hasConsent: has_consent });
     return NextResponse.json({ ok: true, dry_run: true, classification: d, needs_review: rr.length > 0, review_reasons: rr });
   }
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, needs_review: true, error: r.error }, { status: 200 });
   }
   const c = r.data;
+  if (looksLikeInjection(text)) c.suspected_prompt_injection = true; // heuristic backstop, model can miss it
   // Never trust model claims on consent/verification
   if (!has_consent) c.consent_status = "not_granted";
   if (source_kind !== "official_api" && !has_consent) c.verification_status = "unverified";
