@@ -34,6 +34,16 @@ async function handle(req: Request): Promise<Response> {
   const f = parsed.data;
   if (f.website) return NextResponse.json({ ok: true }); // honeypot: silently accept
 
+  // Fail closed before storing customer PII if the verification/dispatch workflow is not configured.
+  // Without WF-01, accepting intake would strand the lead and falsely promise an email.
+  if (!process.env.N8N_WF01_WEBHOOK_URL || !process.env.N8N_WEBHOOK_SHARED_SECRET) {
+    console.error("Crewforthat intake unavailable: verification workflow not configured");
+    return NextResponse.json(
+      { error: "verification_unavailable", message: "Project requests are temporarily unavailable. Please try again later." },
+      { status: 503 },
+    );
+  }
+
   const nc = missingEnv("INTAKE_SHARED_SECRET", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"); if (nc) return nc;
   const secretOk = safeEqual(req.headers.get("x-intake-secret") ?? "", env.intakeSecret());
   if (!secretOk && !process.env.TURNSTILE_SECRET_KEY) return NextResponse.json({ error: "not_configured", missing: ["TURNSTILE_SECRET_KEY"] }, { status: 503 });
