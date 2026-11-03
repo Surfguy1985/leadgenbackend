@@ -3,6 +3,12 @@
 Webflow hosts the **public pages**: Home, `/opportunities`, `/opportunities/[slug]`, `/post-job`, `/contractors/join`, `/privacy`, `/terms`, `/contact`, `/delete-data`.
 The Next.js companion app (`NEXT_PUBLIC_APP_URL`) hosts `/dashboard`, `/admin`, `/login`, and all `/api/*` routes. Link to it as `app.your-domain`.
 
+### Live setup (2026-11-03)
+- Site: `lead gen site` (`6aea50af3438b5c365ffeb89`), staging https://lead-gen-site-dc4966.webflow.io (no custom domain yet).
+- Opportunities collection ID: `6aea5647a8c00f5fff3b39f0` (set as `WEBFLOW_OPPORTUNITIES_COLLECTION_ID` in Vercel). All 12 field slugs verified against `/api/webflow/sync`.
+- `/post-job` page (`6aea5281c00e2a00244db8a5`): HtmlEmbed with `webflow/post-job-embed.html` inserted above the original native Webflow form inside `.pj-formcard`. The native form was left untouched; hide it in the Designer once the embed is confirmed, so submissions don't land in Webflow's form inbox.
+- **Still needed:** `WEBFLOW_API_TOKEN` (site token with CMS read+write) in Vercel. Until then `/api/webflow/sync` returns 503 `not_configured`.
+
 ## 1. CMS collection: "Opportunities" (read-only mirror)
 Create a collection with these fields. Slugs must match exactly, because `/api/webflow/sync` writes them.
 

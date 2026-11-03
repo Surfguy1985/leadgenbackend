@@ -13,7 +13,7 @@ const LABEL: Record<string, string> = { public_bid: "Public bid (not exclusive)"
 export async function POST(req: Request) {
   if (!process.env.N8N_WEBHOOK_SHARED_SECRET || !safeEqual(req.headers.get("x-shared-secret") ?? "", env.n8nSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const token = process.env.WEBFLOW_API_TOKEN, coll = process.env.WEBFLOW_OPPORTUNITIES_COLLECTION_ID;
-  if (!token || !coll) return NextResponse.json({ error: "not_configured", missing: ["WEBFLOW_API_TOKEN","WEBFLOW_OPPORTUNITIES_COLLECTION_ID"] }, { status: 503 });
+  if (!token || !coll) return NextResponse.json({ error: "not_configured", missing: [!token && "WEBFLOW_API_TOKEN", !coll && "WEBFLOW_OPPORTUNITIES_COLLECTION_ID"].filter(Boolean) }, { status: 503 });
   const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   const db = adminDb();
 

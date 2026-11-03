@@ -1,0 +1,37 @@
+<!-- Archangel Advertising: Post a Job embed (posts to Vercel backend; Turnstile protected) -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<form id="post-job">
+  <input class="pj-field" name="name" required placeholder="Your name">
+  <input class="pj-field" name="email" type="email" required placeholder="Email">
+  <input class="pj-field" name="phone" type="tel" placeholder="Phone (optional)">
+  <input class="pj-field" name="zip" required pattern="\d{5}" placeholder="ZIP">
+  <input class="pj-field" name="city" placeholder="City">
+  <select class="pj-field" name="property_type"><option>residential</option><option>multifamily</option><option>commercial</option></select>
+  <textarea class="pj-field" name="description" required minlength="10" placeholder="What do you need done?"></textarea>
+  <input class="pj-field" name="timeline" placeholder="When? (e.g. next 2 weeks)">
+  <input name="website" style="display:none" tabindex="-1" autocomplete="off">
+  <label class="pj-consent"><input type="checkbox" name="consent_share" value="true" required>
+    I agree to share this request and my contact details with up to 5 eligible, matched contractors through Archangel Advertising so they can contact me about this job. I can withdraw at any time. No contractor or outcome is guaranteed.</label>
+  <label class="pj-consent"><input type="checkbox" name="consent_privacy" value="true" required> I have read the <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</label>
+  <div class="cf-turnstile" data-sitekey="0x4AAAAAAFykd3724PLNQGyS"></div>
+  <button class="pj-submit" type="submit">Submit request</button>
+  <p class="pj-status" id="post-job-msg" role="status"></p>
+</form>
+<script>
+(function(){
+  var f=document.getElementById('post-job'), m=document.getElementById('post-job-msg');
+  f.addEventListener('submit', async function(e){
+    e.preventDefault(); m.textContent='Sending…';
+    var data=Object.fromEntries(new FormData(f));
+    data.submission_id = data.submission_id || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random());
+    data.consent_share = f.consent_share.checked ? 'true' : 'false';
+    data.consent_privacy = f.consent_privacy.checked ? 'true' : 'false';
+    try {
+      var r = await fetch('https://archangel-leadgen.vercel.app/api/intake', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+      var j = await r.json();
+      m.textContent = r.ok ? (j.next || 'Thanks! Check your email.') : (j.issues ? j.issues.map(function(i){return i.message}).join(' ') : 'Something went wrong. Please try again.');
+      if (r.ok) f.reset(); else if (window.turnstile) turnstile.reset();
+    } catch(err){ m.textContent='Network error. Please try again.'; }
+  });
+})();
+</script>
