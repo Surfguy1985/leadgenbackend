@@ -23,3 +23,12 @@ test("private leads capped at 5, flagged under 3; public bids uncapped", () => {
   assert.equal(allocate("private_lead", r(2)).underMinTarget, true);
   assert.equal(allocate("public_bid", r(8)).picks.length, 8);
 });
+
+test("CORS allow-list: comma-separated exact origins", async () => {
+  process.env.WEBFLOW_ORIGIN = "https://a.webflow.io, https://b.design.webflow.com/";
+  const { preflight } = await import("../src/lib/cors");
+  const pf = (o: string) => preflight(new Request("https://x/api/intake", { method: "OPTIONS", headers: { origin: o } }));
+  assert.equal(pf("https://a.webflow.io").headers.get("access-control-allow-origin"), "https://a.webflow.io");
+  assert.equal(pf("https://b.design.webflow.com").headers.get("access-control-allow-origin"), "https://b.design.webflow.com");
+  const bad = pf("https://evil.example"); assert.equal(bad.status, 403); assert.equal(bad.headers.get("access-control-allow-origin"), null);
+});

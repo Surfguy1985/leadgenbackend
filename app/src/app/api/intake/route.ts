@@ -4,6 +4,7 @@ import { IntakeForm } from "@/lib/schemas";
 import { adminDb, audit } from "@/lib/supabase";
 import { clientIp, rateLimit, safeEqual } from "@/lib/rateLimit";
 import { env, missingEnv } from "@/lib/env";
+import { preflight, withCors } from "@/lib/cors";
 import { normalizeScope, verifyToken } from "@/lib/scope";
 
 export const runtime = "nodejs";
@@ -19,7 +20,9 @@ async function verifyTurnstile(token: string, ip: string) {
  * Webflow "Post a Job" form target. Accepts JSON or form-encoded.
  * Auth: either header x-intake-secret (Webflow webhook / n8n relay) or a valid Turnstile token (browser fetch from embed).
  */
-export async function POST(req: Request) {
+export async function POST(req: Request) { return withCors(req, await handle(req)); }
+
+async function handle(req: Request): Promise<Response> {
   const ip = clientIp(req);
   if (!rateLimit(`intake:${ip}`, 5, 60_000)) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
 
@@ -77,4 +80,4 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, opportunity_id: opp.id, next: "Check your email to verify your request." });
 }
 
-export async function OPTIONS() { return new Response(null, { status: 204 }); }
+export async function OPTIONS(req: Request) { return preflight(req); }
