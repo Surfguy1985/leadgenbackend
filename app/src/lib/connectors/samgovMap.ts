@@ -32,6 +32,6 @@ export function mapNotice(n: SamNotice, now = new Date()) {
     city: n.placeOfPerformance?.city?.name ?? null, state: "TX", zip: /^\d{5}/.test(n.placeOfPerformance?.zip ?? "") ? n.placeOfPerformance!.zip!.slice(0, 5) : null,
     geographic_scope: n.placeOfPerformance?.city?.name ? "city" : "statewide", deadline: deadline && !isNaN(+deadline) ? deadline.toISOString() : null,
     hide_after: deadline && !isNaN(+deadline) ? deadline.toISOString() : null, source_url: ui, official_apply_url: ui,
-    is_inferred: false, reliability: "official",
+    is_inferred: false, reliability: 0.95,
   };
 }
