@@ -48,3 +48,19 @@ export const IntakeForm = z.object({
   consent_public_listing: z.enum(["true", "false"]).optional(), // separate, optional: non-identifying public summary
 });
 export const ManageAction = z.object({ token: z.string().min(32).max(128), action: z.enum(["status", "withdraw", "close", "reconfirm", "unlist"]), reason: z.string().max(300).optional() });
+
+/** Contractor signup / onboarding (v3). Free tier = public bids only; paid plans unlock private leads. */
+export const ContractorOnboard = z.object({
+  business_name: z.string().trim().min(2).max(160),
+  display_name: z.string().trim().min(1).max(120),
+  trades: z.array(z.enum(TRADES)).min(1).max(7),
+  zip_codes: z.array(z.string().regex(/^\d{5}$/)).max(50).default([]),
+  service_radius: z.number().int().min(0).max(250).optional(),
+  statewide: z.boolean().default(false),
+  goal: z.enum(["now", "future", "buyers", "all"]).default("now"),
+  min_job_value: z.number().min(0).max(10_000_000).optional(),
+  website: z.string().url().max(300).optional().or(z.literal("")),
+  alert_email: z.string().email().max(200).optional(),
+  max_alerts_daily: z.number().int().min(0).max(50).default(10),
+  accept_terms: z.literal(true),
+}).refine(v => v.statewide || v.zip_codes.length > 0, { message: "Add at least one service ZIP or choose statewide", path: ["zip_codes"] });
