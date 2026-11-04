@@ -1,11 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { runIntakeWorkflow } from "@/lib/workflows";
+import { emailConfigured } from "@/lib/email";
 import { createHash } from "node:crypto";
 import { IntakeForm } from "@/lib/schemas";
 import { adminDb, audit } from "@/lib/supabase";
 import { clientIp, rateLimit, safeEqual } from "@/lib/rateLimit";
-import { env, missingEnv } from "@/lib/env";
+import { env, missingEnv, hasSharedSecret } from "@/lib/env";
 import { preflight, withCors } from "@/lib/cors";
-import { normalizeScope, verifyToken } from "@/lib/scope";
+import { normalizeScope } from "@/lib/scope";
 import { isDfwZip, lifecycleDates, newToken, CONSENT_TEXT } from "@/lib/homeowner";
 
 export const runtime = "nodejs";
@@ -19,7 +21,7 @@ async function verifyTurnstile(token: string, ip: string) {
 
 /**
  * Webflow "Post a Job" form target. Accepts JSON or form-encoded.
- * Auth: either header x-intake-secret (Webflow webhook / n8n relay) or a valid Turnstile token (browser fetch from embed).
+ * Auth: either header x-intake-secret (Webflow webhook / server relay) or a valid Turnstile token (browser fetch from embed).
  */
 export async function POST(req: Request) { return withCors(req, await handle(req)); }
 
@@ -33,16 +35,6 @@ async function handle(req: Request): Promise<Response> {
   if (!parsed.success) return NextResponse.json({ error: "invalid", issues: parsed.error.issues.map(i => ({ field: i.path.join("."), message: i.message })) }, { status: 422 });
   const f = parsed.data;
   if (f.website) return NextResponse.json({ ok: true }); // honeypot: silently accept
-
-  // Fail closed before storing customer PII if the verification/dispatch workflow is not configured.
-  // Without WF-01, accepting intake would strand the lead and falsely promise an email.
-  if (!process.env.N8N_WF01_WEBHOOK_URL || !process.env.N8N_WEBHOOK_SHARED_SECRET) {
-    console.error("Crewforthat intake unavailable: verification workflow not configured");
-    return NextResponse.json(
-      { error: "verification_unavailable", message: "Project requests are temporarily unavailable. Please try again later." },
-      { status: 503 },
-    );
-  }
 
   const nc = missingEnv("INTAKE_SHARED_SECRET", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"); if (nc) return nc;
   const secretOk = safeEqual(req.headers.get("x-intake-secret") ?? "", env.intakeSecret());
@@ -95,17 +87,15 @@ async function handle(req: Request): Promise<Response> {
   if (count) await db.from("moderation_queue").insert({ opportunity_id: opp.id, reason: "possible_duplicate", details: { scope_hash } });
   await audit("public", "intake_submitted", "opportunity", opp.id);
 
-  // Hand off to n8n WF-01 (classification, email verification, review, matching)
-  const hook = env.n8nIntakeWebhook();
-  if (hook && inMarket) {
-    await fetch(hook, { method: "POST", headers: { "Content-Type": "application/json", "x-shared-secret": env.n8nSecret() },
-      body: JSON.stringify({ opportunity_id: opp.id, text: `${f.description}\nTimeline: ${f.timeline ?? "not stated"}\nZIP: ${f.zip}`, email: f.email,
-        verify_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/intake/verify?id=${opp.id}&t=${verifyToken(opp.id)}`,
-        manage_url: `${process.env.NEXT_PUBLIC_APP_URL}/manage?t=${manage.token}`, in_market: inMarket, urgency }) })
-      .catch(async (e) => { await db.from("workflow_failures").insert({ workflow: "WF-01", node: "handoff", payload: { opportunity_id: opp.id }, error: String(e), next_retry_at: new Date(Date.now() + 60_000).toISOString() }); });
+  // WF-01 in-app: classify + verification email after the response is sent (idempotent; failures retried by the daily sweep).
+  if (inMarket) {
+    const text = `${f.description}
+Timeline: ${f.timeline ?? "not stated"}
+ZIP: ${f.zip}`;
+    after(() => runIntakeWorkflow(opp.id, { text, manageToken: manage.token }));
   }
   return NextResponse.json({ ok: true, opportunity_id: opp.id, in_market: inMarket,
-    next: inMarket ? "Check your email to verify your request. Your link to manage or withdraw it is in that email." : "Thanks! We currently match direct requests in the Dallas–Fort Worth area. We saved your request and will reach out if we can help." });
+    next: inMarket ? (emailConfigured() ? "Check your email to verify your request. Your link to manage or withdraw it is in that email." : "Thanks! We received your request. We'll email you a confirmation link shortly.") : "Thanks! We currently match direct requests in the Dallas–Fort Worth area. We saved your request and will reach out if we can help." });
 }
 
 export async function OPTIONS(req: Request) { return preflight(req); }

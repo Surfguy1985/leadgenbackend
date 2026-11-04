@@ -6,4 +6,4 @@ export function normalizeScope(s: string) {
 
 
 /** HMAC token for the email-verification link (WF-01). */
-export function verifyToken(id: string) { return createHmac("sha256", env.n8nSecret()).update(`verify:${id}`).digest("hex").slice(0, 32); }
+export function verifyToken(id: string) { return createHmac("sha256", env.sharedSecret()).update(`verify:${id}`).digest("hex").slice(0, 32); }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb, audit } from "@/lib/supabase";
-import { env } from "@/lib/env";
+import { env, hasSharedSecret } from "@/lib/env";
 import { safeEqual } from "@/lib/rateLimit";
 import { oppFields, orgFields, isDirectoryPublic } from "@/lib/webflowMap";
 
@@ -22,7 +22,7 @@ async function upsertLive(coll: string, h: Record<string, string>, itemId: strin
 /** Mirrors ONLY rows the public may see into Webflow CMS (staged items; nothing is published): Opportunities (3 tabs) + Directory.
  *  Liveness for opportunities is decided by the anon RLS view itself (single source of truth for rights, hide_after, archive). */
 export async function POST(req: Request) {
-  if (!process.env.N8N_WEBHOOK_SHARED_SECRET || !safeEqual(req.headers.get("x-shared-secret") ?? "", env.n8nSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!hasSharedSecret() || !safeEqual(req.headers.get("x-shared-secret") ?? "", env.sharedSecret())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const token = process.env.WEBFLOW_API_TOKEN, coll = process.env.WEBFLOW_OPPORTUNITIES_COLLECTION_ID, dirColl = process.env.WEBFLOW_DIRECTORY_COLLECTION_ID;
   if (!token || !coll) return NextResponse.json({ error: "not_configured", missing: [!token && "WEBFLOW_API_TOKEN", !coll && "WEBFLOW_OPPORTUNITIES_COLLECTION_ID"].filter(Boolean) }, { status: 503 });
   const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };

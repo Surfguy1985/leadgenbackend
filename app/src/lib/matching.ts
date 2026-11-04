@@ -1,5 +1,5 @@
 /** WF-04 scoring heuristic (spec weights: trade 40, geo 25, qualifications 20, recent activity 10, preferences 5).
- *  A heuristic for routing, NOT a claim about contractor quality. Mirrored in n8n/WF-04 Code node. */
+ *  A heuristic for routing, NOT a claim about contractor quality. Used by the in-app WF-04 step (lib/workflows.ts). */
 export const WEIGHTS = { trade: 40, geo: 25, qualifications: 20, activity: 10, preferences: 5 } as const;
 export const REGULATED = ["plumbing","electrical","hvac","roofing"]; // TX licensing (TDLR / TSBPE) — verify per trade
 
@@ -29,4 +29,16 @@ export function allocate<T extends { score: number }>(kind: "private_lead" | "pu
   if (kind !== "private_lead") return { picks: sorted, underMinTarget: false };
   const picks = sorted.slice(0, PRIVATE_LEAD_MAX);
   return { picks, underMinTarget: picks.length < PRIVATE_LEAD_MIN_TARGET };
+}
+
+/** WF-04 eligibility + ranking (in-app). Private leads need an active/trialing plan; respects remaining daily alert budget. */
+export type Candidate = Contractor & { id: string; owner_user_id: string | null; paid: boolean; alerts_left: number };
+export function pickMatches(o: Opp & { kind: "private_lead" | "public_bid" }, cs: Candidate[], now = Date.now()) {
+  const ranked = cs.flatMap(c => {
+    if (!c.owner_user_id || c.alerts_left <= 0) return [];
+    if (o.kind === "private_lead" && !c.paid) return [];
+    const s = score(o, c, now);
+    return s.eligible ? [{ contractor_id: c.id, owner_user_id: c.owner_user_id, score: s.score, factors: s.factors }] : [];
+  });
+  return allocate(o.kind, ranked);
 }

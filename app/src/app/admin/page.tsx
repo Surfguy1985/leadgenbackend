@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { matchAndNotify } from "@/lib/workflows";
 import { adminDb, audit, requireRole, adminAction, type AdminRole } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +21,7 @@ async function decide(formData: FormData) {
       // private leads stay private (visibility=private); public bids/signals become public listings
       const visibility = o?.kind === "private_lead" || o?.is_test_data ? "private" : "public";
       await db.from("opportunities").update({ status: "published", visibility, verification_status: o?.kind === "private_lead" ? "verified" : "unverified", published_at: new Date().toISOString(), last_verified_at: new Date().toISOString() }).eq("id", oppId);
+      after(() => matchAndNotify(oppId)); // WF-04 in-app: match + notify (idempotent, retried by daily sweep)
     } else {
       await db.from("opportunities").update({ status: "rejected", visibility: "internal" }).eq("id", oppId);
     }

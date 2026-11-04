@@ -17,8 +17,8 @@ export const env = {
   priceMultiTrade: () => req("STRIPE_PRICE_MULTI_TRADE"),
   appUrl: () => process.env.NEXT_PUBLIC_APP_URL || "https://archangel-leadgen.vercel.app",
   intakeSecret: () => req("INTAKE_SHARED_SECRET"),
-  n8nSecret: () => req("N8N_WEBHOOK_SHARED_SECRET"),
-  n8nIntakeWebhook: () => process.env.N8N_WF01_WEBHOOK_URL,
+  /** Server-to-server shared secret (cron, sync, classify). APP_SHARED_SECRET preferred; legacy N8N_WEBHOOK_SHARED_SECRET still accepted. */
+  sharedSecret: () => process.env.APP_SHARED_SECRET || req("N8N_WEBHOOK_SHARED_SECRET"),
   turnstileSecret: () => req("TURNSTILE_SECRET_KEY"),
   privacyVersion: () => process.env.PRIVACY_VERSION || "2026-11-03",
 };
@@ -28,3 +28,5 @@ export function missingEnv(...names: string[]): Response | null {
   const missing = names.filter(n => !process.env[n]);
   return missing.length ? Response.json({ error: "not_configured", missing }, { status: 503 }) : null;
 }
+
+export const hasSharedSecret = () => !!(process.env.APP_SHARED_SECRET || process.env.N8N_WEBHOOK_SHARED_SECRET);
