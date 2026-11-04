@@ -15,7 +15,7 @@ export async function verifyBacklog(db: SupabaseClient, opts: { max?: number; bu
   const cutoff = new Date(Date.now() - 14 * 86_400_000).toISOString();
   const { data: recs } = await db.from("intel_records").select("id,external_id,fields,provenance,label,organization_id")
     .eq("source_id", src.id).eq("status", "review").eq("record_type", "contractor").eq("contains_personal_data", false)
-    .is("fields->>taxpayer_number", null).not("fields->>active_status", "eq", "expired")
+    .is("fields->>taxpayer_number", null).or("fields->>active_status.is.null,fields->>active_status.neq.expired")
     .or(`fields->>verify_checked_at.is.null,fields->>verify_checked_at.lt.${cutoff}`).limit(opts.max ?? 150);
   const policy = await loadPolicy(ft.id);
   const ctx: Ctx = { sourceId: ft.id, policy, fetchedAt: new Date().toISOString(), limit: 1, lookups: {} };

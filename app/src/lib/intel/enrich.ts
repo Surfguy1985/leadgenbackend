@@ -16,7 +16,7 @@ export async function enrichDirectory(db: SupabaseClient, opts: { max?: number; 
   const { data: recs } = await db.from("intel_records").select("id,external_id,fields,provenance,label,fetched_at,organization_id")
     .eq("source_id", src.id).eq("status", "review").eq("record_type", "contractor").eq("contains_personal_data", false)
     .or("fields->>city.is.null,fields->>business_contact.is.null").or(`fields->>enrich_checked_at.is.null,fields->>enrich_checked_at.lt.${cutoff}`)
-    .not("fields->>active_status", "eq", "expired").order("score", { ascending: false }).limit(opts.max ?? 15);
+    .or("fields->>active_status.is.null,fields->>active_status.neq.expired").order("score", { ascending: false }).limit(opts.max ?? 15);
   const th = await threshold(db);
   for (const r of recs ?? []) {
     if (Date.now() - t0 > (opts.budgetMs ?? 150_000)) break;
