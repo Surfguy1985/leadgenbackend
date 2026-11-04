@@ -36,6 +36,16 @@ async function handle(req: Request): Promise<Response> {
   const f = parsed.data;
   if (f.website) return NextResponse.json({ ok: true }); // honeypot: silently accept
 
+  // Gate 01: Never accept and store a real customer request until the
+  // verification mail provider is configured and a controlled end-to-end test
+  // has explicitly enabled production intake.
+  if (!emailConfigured() || process.env.INTAKE_LIVE_ENABLED !== "true") {
+    return NextResponse.json(
+      { error: "intake_unavailable", message: "Project requests are temporarily paused while secure email verification is being completed." },
+      { status: 503 },
+    );
+  }
+
   const nc = missingEnv("INTAKE_SHARED_SECRET", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"); if (nc) return nc;
   const secretOk = safeEqual(req.headers.get("x-intake-secret") ?? "", env.intakeSecret());
   if (!secretOk && !process.env.TURNSTILE_SECRET_KEY) return NextResponse.json({ error: "not_configured", missing: ["TURNSTILE_SECRET_KEY"] }, { status: 503 });
