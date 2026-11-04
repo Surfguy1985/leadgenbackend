@@ -83,7 +83,7 @@ export default function ContractorFeed() {
     .cf-feed__eyebrow{color:#7257CB;font-size:11px;font-weight:850;letter-spacing:.14em}
     .cf-feed__hero h1{font-size:clamp(40px,5vw,65px);letter-spacing:-.072em;line-height:1.12;margin:16px 0 12px}.cf-feed__hero h1 span{color:#7153CB}
     .cf-feed__hero p{max-width:760px;color:#70657F;font-size:15px;line-height:1.7;margin:0}
-    .cf-feed__filters{border:1px solid #E9E4F1;border-radius:25px;background:#fff;padding:22px;display:grid;grid-template-columns:1fr auto;gap:16px;margin:0 0 25px}
+    .cf-feed__guide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:0 0 14px}.cf-feed__guide span{background:#fff;border:1px solid #E9E5F1;border-radius:15px;padding:15px 11px;font-weight:800;font-size:12px;display:flex;align-items:center;gap:9px;justify-content:center}.cf-feed__guide b{background:#EEE9FF;color:#7256CC;width:25px;height:25px;flex:0 0 25px;border-radius:100%;display:grid;place-items:center}.cf-feed__filters{border:1px solid #E9E4F1;border-radius:25px;background:#fff;padding:22px;display:grid;grid-template-columns:1fr auto;gap:16px;margin:0 0 25px}
     .cf-feed__tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .cf-feed__tab{border:1px solid #E8E4EE;border-radius:100px;background:#F8F6FA;color:#655C76;font-size:12px;font-weight:800;padding:13px 18px;cursor:pointer}
     .cf-feed__tab[aria-selected="true"]{background:#28243E;color:#fff;border-color:#28243E}
@@ -109,10 +109,11 @@ export default function ContractorFeed() {
     .cf-feed__error{background:#FFF0EA;border-radius:14px;padding:17px;color:#8B4133}
     .cf-feed__footnote{margin:25px 0 0;color:#938C9B;font-size:12px;line-height:1.65}
     @media(max-width:800px){.cf-feed__grid{grid-template-columns:1fr}.cf-feed__filters{grid-template-columns:1fr}.cf-feed__counter{text-align:left}.cf-feed__search{grid-template-columns:1fr}}
-    @media(max-width:480px){.cf-feed__hero{padding:29px 25px;border-radius:25px}.cf-feed__card{padding:23px}.cf-feed__actions>*{flex:1;text-align:center;justify-content:center}.cf-feed__navlinks a{font-size:11px}}
+    @media(max-width:480px){.cf-feed__guide span{font-size:10px;padding:12px 6px;gap:5px}.cf-feed__guide b{width:20px;height:20px;flex-basis:20px}.cf-feed__hero{padding:29px 25px;border-radius:25px}.cf-feed__card{padding:23px}.cf-feed__actions>*{flex:1;text-align:center;justify-content:center}.cf-feed__navlinks a{font-size:11px}}
   `}</style>
   <nav className="cf-feed__nav"><a href="https://lead-gen-site-dc4966.webflow.io/" className="cf-feed__brand">crew<span>for</span>that.</a><div className="cf-feed__navlinks"><a href="/dashboard">Dashboard</a><a href="/app/pipeline">My next steps</a><a href="/app/profile">Crew readiness</a><a href="/app/saved">Saved jobs</a><a href="/app/searches">Saved searches</a><a href="/app/settings">Settings</a></div></nav>
-  <div className="cf-feed__main"><header className="cf-feed__hero"><span className="cf-feed__eyebrow">YOUR OPPORTUNITY DISCOVERY</span><h1>Find work <span>your way.</span></h1><p>Search official public opportunities, save promising bids, and build a shortlist. All applications go to the original issuing organization.</p></header>
+  <div className="cf-feed__main"><header className="cf-feed__hero"><span className="cf-feed__eyebrow">YOUR OPPORTUNITY DISCOVERY</span><h1>Find your next job.</h1><p>Pick a job. Save it. We’ll help you decide what to do next.</p></header>
+    <div className="cf-feed__guide" aria-label="How it works"><span><b>1</b> Find work</span><span><b>2</b> Save a job</span><span><b>3</b> Take action</span></div>
     <section className="cf-feed__filters" aria-label="Opportunity filters">
       <div className="cf-feed__tabs" role="tablist" aria-label="Opportunity category">
         {([["jobs_now","Jobs Now"],["upcoming","Future Contracts"],["buyers","Find Buyers"]] as const).map(([value,label])=><button type="button" role="tab" aria-selected={tab===value} className="cf-feed__tab" key={value} onClick={()=>setTab(value)}>{label}</button>)}
