@@ -4,13 +4,13 @@ import { DFW_CITY, type Candidate } from "./connectors";
 import { evaluate } from "./evaluate";
 import { threshold, resolveOrg } from "./engine";
 import { entityKey, type Check } from "@/lib/quality";
-import { BLOCKED_HOST, extractContact as extract } from "./contact";
+import { isOwnSite, extractContact as extract } from "./contact";
 const extractContact = (n: string, p: string, u: string) => extract(n, p, u, c => DFW_CITY.test(c));
 
 /** Directory enrichment for TDLR records in review missing a city or contact. Budgeted; each record retried at most every 30 days. */
 export async function enrichDirectory(db: SupabaseClient, opts: { max?: number; budgetMs?: number } = {}) {
   if (!firecrawlEnabled()) return { skipped: "FIRECRAWL_API_KEY missing" };
-  const t0 = Date.now(); const out = { checked: 0, enriched: 0, published: 0, no_site: 0, errors: 0 };
+  const t0 = Date.now(); const out = { checked: 0, enriched: 0, published: 0, no_site: 0, errors: 0, error_sample: [] as string[] };
   const { data: src } = await db.from("sources").select("*").eq("connector", "tdlr").maybeSingle(); if (!src) return { skipped: "no_tdlr_source" };
   const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const { data: recs } = await db.from("intel_records").select("id,external_id,fields,provenance,label,fetched_at,organization_id")
@@ -23,7 +23,7 @@ export async function enrichDirectory(db: SupabaseClient, opts: { max?: number; 
     out.checked++; const f = { ...(r.fields as any) }; const now = new Date().toISOString(); f.enrich_checked_at = now;
     try {
       const name = f.dba ?? f.legal_name;
-      const hits = (await fcSearch(`"${name}" ${f.county ?? ""} County Texas ${f.subtrade ?? ""} contractor`, 6)).filter(h => { try { return !BLOCKED_HOST.test(new URL(h.url).hostname); } catch { return false; } });
+      const hits = (await fcSearch(`"${name}" ${f.county ?? ""} County Texas ${f.subtrade ?? ""} contractor`, 6)).filter(h => isOwnSite(name, h.url));
       let got: ReturnType<typeof extractContact> = null; let pageUrl = "";
       for (const h of hits.slice(0, 2)) { const p = await fcScrape(h.url).catch(() => null); if (!p || p.status !== 200) continue; got = extractContact(name, p.markdown || p.html, h.url); if (got) { pageUrl = h.url; break; } }
       if (!got || (!got.phone && !got.city)) { out.no_site++; await db.from("intel_records").update({ fields: f, updated_at: now }).eq("id", r.id); continue; }
@@ -40,7 +40,7 @@ export async function enrichDirectory(db: SupabaseClient, opts: { max?: number; 
       const e = evaluate(c, now, 1, th); out.enriched++;
       await db.from("intel_records").update({ fields: f, provenance: prov, score: e.score, score_breakdown: e.breakdown, gate_failures: e.gates, status: e.status, fetched_at: now, updated_at: now }).eq("id", r.id);
       if (e.status === "published") { out.published++; const id = await resolveOrg(db, src, c, e, true); if (id && !r.organization_id) await db.from("intel_records").update({ organization_id: id }).eq("id", r.id); }
-    } catch { out.errors++; }
+    } catch (e) { out.errors++; if (out.error_sample.length < 3) out.error_sample.push(String(e).slice(0, 120)); }
   }
   return out;
 }

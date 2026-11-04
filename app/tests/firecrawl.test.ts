@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { listBidIds, parseBid, parseClose, bidTrade } from "../src/lib/intel/civicplus";
-import { extractContact as ec } from "../src/lib/intel/contact";
+import { extractContact as ec, isOwnSite } from "../src/lib/intel/contact";
 const extractContact = (n: string, p: string, u: string) => ec(n, p, u, c => /^(FRISCO|PLANO)$/i.test(c));
 import { promote } from "../src/lib/intel/promote";
 import { evaluate } from "../src/lib/intel/evaluate";
@@ -28,4 +28,13 @@ test("enrichment keeps only verbatim values and requires the business name", () 
   const r = extractContact("ACME MECHANICAL LLC", page, "https://acmemech.com/about");
   assert.equal(r?.phone, "(972) 555-0142"); assert.equal(r?.city, "Frisco"); assert.equal(r?.website, "https://acmemech.com");
   assert.equal(extractContact("BOLT ELECTRIC INC", page, "https://acmemech.com"), null);
+});
+test("own-website rule rejects directories, aggregators and documents", () => {
+  assert.equal(isOwnSite("D.T.M. HEATING AND AIR CONDITIONING", "https://dtmpro.com/furnace-repair/"), true);
+  assert.equal(isOwnSite("TREMAINE HEATING & COOLING LLC", "https://dfwhvaccontractors.com/tarrant-county-tx/page/12/"), false);
+  assert.equal(isOwnSite("RED'S AIR CONDITIONING & HEATING", "https://serviceagent.ai/directory/texas/garland/hvac/x/"), false);
+  assert.equal(isOwnSite("WOODLANDER ENVIRONMENTS,INC", "https://cases.stretto.com/a.pdf"), false);
+  assert.equal(isOwnSite("LG HEAT & AIR LLC", "https://www.verifiednode.com/audit/texas/dallas/lg-heat-and-air-llc"), false);
+  assert.equal(isOwnSite("TREMAINE HEATING & COOLING LLC", "https://tremaineheating.com/"), true);
+  assert.equal(isOwnSite("ACME MECHANICAL LLC", "https://www.facebook.com/acme"), false);
 });

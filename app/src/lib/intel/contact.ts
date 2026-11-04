@@ -14,3 +14,15 @@ export function extractContact(name: string, page: string, url: string, isCity: 
   return { phone, city, website: new URL(url).origin };
 }
 
+
+const GENERIC = new Set("HEATING AIR COOLING CONDITIONING CONDITION AC HVAC SERVICE SERVICES ELECTRIC ELECTRICAL MECHANICAL CONTRACTOR CONTRACTORS PLUMBING SYSTEMS SOLUTIONS GROUP ENERGY HOME HOMES PRO PROS TEXAS DALLAS FORT WORTH DFW NORTH SOUTH EAST WEST AND THE SIGN SIGNS ELEVATOR COMPANY ENTERPRISES ENTERPRISE REFRIGERATION".split(" "));
+/** "Own website" = the domain itself carries the business's distinctive name (e.g. dtmpro.com for D.T.M. Heating). Directory/aggregator pages and documents never qualify. */
+export function isOwnSite(name: string, url: string): boolean {
+  let u: URL; try { u = new URL(url); } catch { return false; }
+  if (BLOCKED_HOST.test(u.hostname) || /\.(pdf|docx?|xlsx?)$/i.test(u.pathname) || /directory|listing|contractors?\/|\/audit\/|\/page\/\d/i.test(u.pathname)) return false;
+  const label = u.hostname.replace(/^www\./, "").split(".").slice(0, -1).join("").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const distinct = entityKey(name, "").split("|")[0].split(" ").filter(w => w && !GENERIC.has(w));
+  const compact = distinct.join(""); if (compact.length >= 3 && label.includes(compact)) return true;
+  const initials = distinct.every(w => w.length === 1) ? compact : "";
+  return (initials.length >= 3 && label.startsWith(initials)) || distinct.some(w => w.length >= 4 && label.includes(w));
+}
