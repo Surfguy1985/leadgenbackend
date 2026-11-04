@@ -34,7 +34,8 @@ export async function POST(req: Request) {
     .in("kind", ["public_bid", "discovery_signal"]).order("updated_at", { ascending: false }).limit(500);
   const now = new Date().toISOString();
   // changed rows, plus live rows whose hide_after has passed (time-based hide doesn't bump updated_at)
-  const todo = (rows ?? []).filter(r => !r.webflow_synced_at || r.webflow_synced_at < r.updated_at || (r.webflow_item_id && r.hide_after && r.hide_after < now));
+  // Opportunities are served by /api/public/listings (client-side cards); CMS only keeps removals of previously synced items.
+  const todo = (rows ?? []).filter(r => r.webflow_item_id).filter(r => !r.webflow_synced_at || r.webflow_synced_at < r.updated_at || (r.webflow_item_id && r.hide_after && r.hide_after < now));
   const pubIds = new Set<string>();
   if (todo.length) {
     const r = await fetch(`${env.supabaseUrl()}/rest/v1/public_opportunities?select=id&id=in.(${todo.map(t => t.id).join(",")})`, { headers: { apikey: env.supabaseAnon(), Authorization: `Bearer ${env.supabaseAnon()}` } });
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
   const opp: Sync = { created: 0, updated: 0, removed: 0, errors: 0 };
   for (const o of todo) {
     try {
-      const out = await upsertLive(coll, h, o.webflow_item_id, pubIds.has(o.id), oppFields(o), opp);
+      const out = await upsertLive(coll, h, o.webflow_item_id, pubIds.has(o.id), oppFields(o), opp); // existing items only: update or remove, never create
       if (out.stop) break; if (!out.ok) continue;
       await db.from("opportunities").update({ webflow_item_id: out.itemId, webflow_synced_at: new Date(Date.now() + 1000).toISOString() }).eq("id", o.id);
     } catch { opp.errors++; }

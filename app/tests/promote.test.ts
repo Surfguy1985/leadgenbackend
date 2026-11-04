@@ -24,3 +24,8 @@ const gp = { trade: "commercial_construction", subtrades: [], zip: null, propert
 test("no-zip prospect matches DFW contractor by trade", () => { assert.equal(geoScore(gp, gc).eligible, true); });
 test("no-zip prospect rejects non-DFW non-statewide contractor", () => { assert.equal(geoScore(gp, { ...gc, zip_codes: ["78701"] }).eligible, false); });
 test("no-zip prospect matches statewide contractor", () => { assert.equal(geoScore(gp, { ...gc, zip_codes: ["78701"], statewide: true }).eligible, true); });
+import { cleanQ, cleanTrade, TAB_MAP } from "../src/lib/publicFeed";
+test("public feed sanitizes PostgREST filter input", () => {
+  assert.equal(cleanQ("roof),id.eq.1*"), "roof id eq 1"); assert.equal(cleanTrade("Commercial Construction"), "commercial_construction");
+  assert.equal(TAB_MAP.upcoming, "future_contracts"); assert.equal(TAB_MAP.buyers, "find_buyers"); assert.equal(TAB_MAP.bogus, undefined);
+});
