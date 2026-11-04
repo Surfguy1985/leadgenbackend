@@ -57,6 +57,16 @@ export async function POST(req: Request) {
     const { error } = await c.db.from("saved_items").update({ note: parsed.data.note ?? null }).eq("id", previous.id).eq("contractor_id", c.id);
     return error ? NextResponse.json({ error: "save_failed" }, { status: 503 }) : NextResponse.json({ ok: true, id: previous.id });
   }
+  // Free-plan cap is five saved records, as configured in the v3 plan table.
+  // Use the authenticated contractor identity and read effective entitlements
+  // server-side; client input cannot impersonate a paid plan.
+  const { count, error: countError } = await c.db.from("saved_items")
+    .select("id", { count: "exact", head: true }).eq("contractor_id", c.id)
+    .not("opportunity_id", "is", null);
+  if (countError) return NextResponse.json({ error: "save_unavailable" }, { status: 503 });
+  if ((count ?? 0) >= 5) return NextResponse.json({
+    error: "saved_limit_reached", message: "Your free shortlist includes up to five opportunities. Remove one to save another.",
+  }, { status: 409 });
   const { data, error } = await c.db.from("saved_items")
     .insert({ contractor_id: c.id, opportunity_id: listing.id, note: parsed.data.note ?? null })
     .select("id").single();
