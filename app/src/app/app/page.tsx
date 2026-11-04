@@ -111,7 +111,7 @@ export default function ContractorFeed() {
     @media(max-width:800px){.cf-feed__grid{grid-template-columns:1fr}.cf-feed__filters{grid-template-columns:1fr}.cf-feed__counter{text-align:left}.cf-feed__search{grid-template-columns:1fr}}
     @media(max-width:480px){.cf-feed__hero{padding:29px 25px;border-radius:25px}.cf-feed__card{padding:23px}.cf-feed__actions>*{flex:1;text-align:center;justify-content:center}.cf-feed__navlinks a{font-size:11px}}
   `}</style>
-  <nav className="cf-feed__nav"><a href="https://lead-gen-site-dc4966.webflow.io/" className="cf-feed__brand">crew<span>for</span>that.</a><div className="cf-feed__navlinks"><a href="/dashboard">Dashboard</a><a href="/app/profile">Crew readiness</a><a href="/app/saved">Saved jobs</a><a href="/app/searches">Saved searches</a><a href="/app/settings">Settings</a></div></nav>
+  <nav className="cf-feed__nav"><a href="https://lead-gen-site-dc4966.webflow.io/" className="cf-feed__brand">crew<span>for</span>that.</a><div className="cf-feed__navlinks"><a href="/dashboard">Dashboard</a><a href="/app/pipeline">My next steps</a><a href="/app/profile">Crew readiness</a><a href="/app/saved">Saved jobs</a><a href="/app/searches">Saved searches</a><a href="/app/settings">Settings</a></div></nav>
   <div className="cf-feed__main"><header className="cf-feed__hero"><span className="cf-feed__eyebrow">YOUR OPPORTUNITY DISCOVERY</span><h1>Find work <span>your way.</span></h1><p>Search official public opportunities, save promising bids, and build a shortlist. All applications go to the original issuing organization.</p></header>
     <section className="cf-feed__filters" aria-label="Opportunity filters">
       <div className="cf-feed__tabs" role="tablist" aria-label="Opportunity category">
