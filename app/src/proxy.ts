@@ -28,7 +28,13 @@ export async function proxy(request: NextRequest) {
   });
 
   // getClaims validates the JWT and refreshes the session when required.
-  await supabase.auth.getClaims();
+  const { data } = await supabase.auth.getClaims();
+  // Signed-out visitors to onboarding go to login and come back afterwards.
+  if (!data?.claims && request.nextUrl.pathname.startsWith("/onboarding")) {
+    const login = new URL("/login", request.url);
+    login.searchParams.set("next", request.nextUrl.pathname);
+    return NextResponse.redirect(login);
+  }
   return response;
 }
 
