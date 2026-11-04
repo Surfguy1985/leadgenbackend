@@ -11,6 +11,14 @@ const Save = z.object({
   opportunity_id: UUID,
   note: z.string().trim().max(500).optional(),
 });
+const PipelineUpdate = z.object({
+  id: UUID,
+  stage: z.enum(["saved","researching","estimating","ready","submitted","won","lost","archived"]),
+  note: z.string().trim().max(500).nullable().optional(),
+  next_action: z.string().trim().max(220).nullable().optional(),
+  action_due_at: z.string().datetime({ offset: true }).nullable().optional(),
+  estimated_bid: z.number().finite().min(0).max(100000000).nullable().optional(),
+});
 
 async function contractor() {
   const session = await currentUser();
@@ -28,7 +36,7 @@ export async function GET() {
   const c = await contractor();
   if (!c) return NextResponse.json({ error: "unauthorized_or_not_onboarded" }, { status: 401 });
   const { data, error } = await c.db.from("saved_items")
-    .select("id,opportunity_id,note,created_at").eq("contractor_id", c.id)
+    .select("id,opportunity_id,note,created_at,stage,next_action,action_due_at,estimated_bid,submitted_at,stage_updated_at").eq("contractor_id", c.id)
     .not("opportunity_id", "is", null).order("created_at", { ascending: false }).limit(100);
   if (error) return NextResponse.json({ error: "unavailable" }, { status: 503 });
   const ids = (data ?? []).map(x => x.opportunity_id);
@@ -71,6 +79,34 @@ export async function POST(req: Request) {
     .insert({ contractor_id: c.id, opportunity_id: listing.id, note: parsed.data.note ?? null })
     .select("id").single();
   return error ? NextResponse.json({ error: "save_failed" }, { status: 503 }) : NextResponse.json({ ok: true, id: data.id }, { status: 201 });
+}
+
+export async function PATCH(req: Request) {
+  if (!rateLimit(`pipeline:${clientIp(req)}`, 24, 60_000))
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  const c = await contractor();
+  if (!c) return NextResponse.json({ error: "unauthorized_or_not_onboarded" }, { status: 401 });
+  const parsed = PipelineUpdate.safeParse(await req.json().catch(() => null));
+  if (!parsed.success)
+    return NextResponse.json({ error: "invalid", issues: parsed.error.issues.map(x => x.message) }, { status: 422 });
+  const { id, stage, ...other } = parsed.data;
+  const { data: previous, error: readError } = await c.db.from("saved_items")
+    .select("id,stage,submitted_at").eq("id", id).eq("contractor_id", c.id)
+    .not("opportunity_id", "is", null).maybeSingle();
+  if (readError) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+  if (!previous) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  // These fields are contractor-owned pursuit notes, not procurement-source facts.
+  const now = new Date().toISOString();
+  const payload = {
+    ...other, stage,
+    stage_updated_at: stage !== previous.stage ? now : undefined,
+    submitted_at: stage === "submitted" && !previous.submitted_at ? now : previous.submitted_at,
+  };
+  const { data, error } = await c.db.from("saved_items")
+    .update(payload).eq("id", id).eq("contractor_id", c.id)
+    .select("id,stage,note,next_action,action_due_at,estimated_bid,submitted_at,stage_updated_at").single();
+  if (error) return NextResponse.json({ error: "update_failed" }, { status: 503 });
+  return NextResponse.json({ ok: true, item: data }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function DELETE(req: Request) {
