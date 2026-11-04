@@ -1,0 +1,24 @@
+"use client";
+import { useEffect, useState } from "react";
+type Search = { id:string;label:string;query:string;trade:string|null;zip:string|null;tab:"jobs_now"|"upcoming"|"buyers";created_at:string };
+export default function SavedSearches(){
+ const [items,setItems]=useState<Search[]>([]),[loading,setLoading]=useState(true),[message,setMessage]=useState("");
+ useEffect(()=>{fetch("/api/contractor/searches",{cache:"no-store"}).then(async r=>{if(r.status===401){window.location.assign("/login?next=/app/searches");return null;}if(!r.ok)throw Error("unavailable");return r.json()}).then(x=>{if(x)setItems(x.items||[])}).catch(()=>setMessage("Saved searches could not be loaded.")).finally(()=>setLoading(false))},[]);
+ async function remove(id:string) {const r=await fetch("/api/contractor/searches?id="+encodeURIComponent(id),{method:"DELETE"});if(!r.ok){setMessage("Couldn't delete this search.");return;}setItems(prev=>prev.filter(x=>x.id!==id));setMessage("Search removed.");}
+ return <main className="cfsearches"><style>{`
+ .cfsearches{min-height:100svh;background:#FAF9FC;color:#28243E;font-family:Arial,-apple-system,BlinkMacSystemFont,sans-serif;padding:26px clamp(17px,5vw,73px) 85px}.cfsearches *{box-sizing:border-box}
+ .cfsearches__nav,.cfsearches__main{max-width:1080px;margin:auto}.cfsearches__nav{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:30px}.cfsearches__brand{font-weight:900;letter-spacing:-.085em;font-size:25px;text-decoration:none;color:#28243E}.cfsearches__brand span{color:#765CDC}.cfsearches__back{font-size:12px;font-weight:800;padding:12px 17px;border-radius:100px;background:white;color:#5D556C;border:1px solid #EBE6F0;text-decoration:none}
+ .cfsearches__hero{padding:clamp(29px,5vw,57px);background:#EAE2FF;border-radius:30px;margin-bottom:22px}.cfsearches__eyebrow{font-size:11px;letter-spacing:.13em;color:#7258CB;font-weight:850}.cfsearches__hero h1{font-size:clamp(37px,5vw,62px);line-height:1.1;letter-spacing:-.075em;margin:17px 0 13px}.cfsearches__hero p{max-width:640px;font-size:14px;line-height:1.7;color:#70677F;margin:0}
+ .cfsearches__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.cfsearches__card{background:#fff;border:1px solid #E8E3F0;border-radius:24px;padding:26px;display:flex;flex-direction:column;gap:11px}.cfsearches__chip{align-self:start;font-size:10px;color:#6E55C7;background:#F0EBFF;border-radius:100px;font-weight:850;padding:9px 13px;letter-spacing:.04em}
+ .cfsearches__card h2{font-size:22px;letter-spacing:-.05em;margin:10px 0 2px}.cfsearches__card p{font-size:13px;line-height:1.6;color:#7B7489;margin:0 0 16px}.cfsearches__actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:auto;border-top:1px solid #EFEAF4;padding-top:17px}.cfsearches__open{background:#29243E;color:#fff;border-radius:100px;text-decoration:none;padding:13px 18px;font-size:12px;font-weight:850}.cfsearches__remove{background:#F4F1F9;color:#685F77;border:0;border-radius:100px;padding:13px 18px;font-size:12px;font-weight:800;cursor:pointer}
+ .cfsearches__empty{background:#fff;border:1px dashed #D8CEF3;padding:37px;border-radius:25px;color:#786E89;font-size:14px;line-height:1.7}.cfsearches__empty a{font-size:13px;color:#6952CF;font-weight:850}
+ @media(max-width:720px){.cfsearches__grid{grid-template-columns:1fr}.cfsearches__card{padding:22px}}
+ `}</style>
+ <nav className="cfsearches__nav"><a href="https://lead-gen-site-dc4966.webflow.io/" className="cfsearches__brand">crew<span>for</span>that.</a><a href="/app" className="cfsearches__back">← Browse work</a></nav>
+ <div className="cfsearches__main"><header className="cfsearches__hero"><span className="cfsearches__eyebrow">YOUR DISCOVERY SHORTCUTS</span><h1>Saved searches.</h1><p>Pick up exactly where you left off. Your filters stay private to your contractor account; saved searches don't guarantee email notifications or a project award.</p></header>
+ {message&&<p role="status">{message}</p>}
+ {loading?<p role="status">Loading your searches…</p>:items.length?
+ <div className="cfsearches__grid">{items.map(s=><article className="cfsearches__card" key={s.id}><span className="cfsearches__chip">{s.tab==="jobs_now"?"JOBS NOW":s.tab==="upcoming"?"FUTURE CONTRACTS":"FIND BUYERS"}</span><h2>{s.label}</h2><p>{[s.trade?.replaceAll("_"," "),s.zip,s.query].filter(Boolean).join(" · ")||"All opportunities"}</p><div className="cfsearches__actions"><a className="cfsearches__open" href={"/app?"+new URLSearchParams({tab:s.tab,query:s.query,trade:s.trade||"",zip:s.zip||""}).toString()}>Open search ↗</a><button className="cfsearches__remove" onClick={()=>void remove(s.id)}>Remove</button></div></article>)}</div>:
+ <div className="cfsearches__empty"><h2>No searches saved yet.</h2><p>Filter the opportunity board by a trade, location or project keyword, then select Save these filters.</p><a href="/app">Discover opportunities ↗</a></div>}
+ </div></main>;
+}
