@@ -9,6 +9,7 @@ export default function Login() {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [code, setCode] = useState("");
   useEffect(() => {
     const r = new URLSearchParams(window.location.search).get("error");
     const M: Record<string, string> = {
@@ -30,17 +31,31 @@ export default function Login() {
       const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
       if (!url || !key) throw new Error("Sign-in is temporarily unavailable. Please try again shortly.");
       const sb = createBrowserClient(url, key);
-      const result = await sb.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: { emailRedirectTo: (() => { const n = safeNext(new URLSearchParams(window.location.search).get("next")); return `${window.location.origin}/auth/callback${n ? `?next=${encodeURIComponent(n)}` : ""}`; })() },
-      });
-      if (result.error) throw new Error(result.error.status === 429 || /rate limit|security purposes/i.test(result.error.message) ? "Too many sign-in emails were requested. Wait a minute and try again." : "We couldn't send the sign-in link. Check your address and try again.");
+      const addr = email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(addr)) throw new Error("That email address doesn't look right. Check it and try again.");
+      const n = safeNext(new URLSearchParams(window.location.search).get("next"));
+      const site = (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "");
+      const result = await sb.auth.signInWithOtp({ email: addr, options: { shouldCreateUser: true, emailRedirectTo: `${site}/auth/confirm${n ? `?next=${encodeURIComponent(n)}` : ""}` } });
+      if (result.error) throw new Error(authMessage(result.error));
       setSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in is temporarily unavailable.");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function verifyCode(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      const sb = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      const { error: err } = await sb.auth.verifyOtp({ email: email.trim().toLowerCase(), token: code.trim(), type: "email" });
+      if (err) throw new Error(/expired|invalid/i.test(err.message) ? "That code is wrong or expired. Request a new email and try again." : authMessage(err));
+      const n = safeNext(new URLSearchParams(window.location.search).get("next"));
+      window.location.assign(`/auth/confirm?verified=1${n ? `&next=${encodeURIComponent(n)}` : ""}`);
+    } catch (err) { setError(err instanceof Error ? err.message : "We couldn't verify that code."); setBusy(false); }
   }
 
   return (
@@ -91,7 +106,7 @@ export default function Login() {
         <section className="crew-login__form" aria-labelledby="sign-in-heading">
           <h2 id="sign-in-heading">{sent ? "Check your inbox." : "Welcome back."}</h2>
           <p>{sent ? "We sent a secure sign-in link if the address is eligible. Open it in this same browser to continue." : "Sign in or create a free contractor account. No password needed."}</p>
-          {sent ? <div className="crew-login__sent" role="status"><strong>One click to get started.</strong><p>Check your inbox and spam folder. The link expires for your security.</p><button className="crew-login__retry" onClick={() => {setSent(false);setError("");}}>Use another email →</button></div> :
+          {sent ? <div className="crew-login__sent" role="status"><strong>One click to get started.</strong><p>Check your inbox and spam folder. The link expires for your security.</p><form onSubmit={verifyCode} style={{margin:"0 0 14px"}}><div className="crew-login__field"><label htmlFor="otp-code">OR ENTER THE 6-DIGIT CODE FROM THE EMAIL</label><input id="otp-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" maxLength={10} placeholder="123456" value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,""))}/></div><button className="crew-login__submit" disabled={busy || code.length < 6} type="submit">{busy ? "Checking…" : "Verify code"}</button>{error && <p className="crew-login__error" role="alert">{error}</p>}</form><button className="crew-login__retry" onClick={() => {setSent(false);setError("");}}>Use another email →</button></div> :
             <form onSubmit={signIn} noValidate={false}>
               <div className="crew-login__field"><label htmlFor="contractor-email">WORK EMAIL</label><input id="contractor-email" type="email" required autoComplete="email" inputMode="email" placeholder="you@yourcompany.com" value={email} onChange={e=>setEmail(e.target.value)}/></div>
               <button className="crew-login__submit" disabled={busy} type="submit">{busy ? "Sending link…" : "Continue with email ↗"}</button>
@@ -103,4 +118,12 @@ export default function Login() {
       <footer className="crew-login__footer">© 2026 Crewforthat · DFW property services · Jobs are never guaranteed.</footer>
     </main>
   );
+}
+
+function authMessage(e: { status?: number; message: string; code?: string }): string {
+  if (e.status === 429 || /rate limit|security purposes|over_email_send_rate/i.test(e.message + (e.code ?? ""))) return "Too many sign-in emails were requested. Wait a few minutes, then try again (check spam for an earlier email first).";
+  if (/invalid|valid email|email_address_invalid/i.test(e.message + (e.code ?? ""))) return "That email address can't receive sign-in links. Check it and try again.";
+  if (/signups? not allowed/i.test(e.message)) return "New sign-ups are paused right now. Please try again later.";
+  if (/smtp|sending/i.test(e.message)) return "Our email service couldn't send right now. Please try again in a few minutes.";
+  return "We couldn't send the sign-in email. Check your address and try again.";
 }
