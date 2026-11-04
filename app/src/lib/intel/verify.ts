@@ -16,15 +16,15 @@ export async function verifyBacklog(db: SupabaseClient, opts: { max?: number; bu
   const { data: recs } = await db.from("intel_records").select("id,external_id,fields,provenance,label,organization_id")
     .eq("source_id", src.id).eq("status", "review").eq("record_type", "contractor").eq("contains_personal_data", false)
     .is("fields->>taxpayer_number", null).or("fields->>active_status.is.null,fields->>active_status.neq.expired")
-    .or(`fields->>verify_checked_at.is.null,fields->>verify_checked_at.lt.${cutoff}`).limit(opts.max ?? 150);
+    .or(`fields->>verify_checked_at.is.null,fields->>verify_checked_at.lt.${cutoff}`).limit(opts.max ?? 300);
   const policy = await loadPolicy(ft.id);
   const ctx: Ctx = { sourceId: ft.id, policy, fetchedAt: new Date().toISOString(), limit: 1, lookups: {} };
-  const lookup = franchiseLookup(ctx, opts.max ?? 150); const th = await threshold(db);
+  const lookup = franchiseLookup(ctx, opts.max ?? 300); const th = await threshold(db);
   for (const r of recs ?? []) {
-    if (Date.now() - t0 > (opts.budgetMs ?? 240_000)) break;
+    if (Date.now() - t0 > (opts.budgetMs ?? 270_000)) break;
     out.checked++; const f = { ...(r.fields as any) }; const prov = { ...(r.provenance as any) }; const now = new Date().toISOString(); f.verify_checked_at = now;
     const fr = await lookup(f.dba ?? f.legal_name, f.county).catch(() => null);
-    await new Promise(x => setTimeout(x, opts.pauseMs ?? 400)); // Socrata courtesy pacing (no app token)
+    await new Promise(x => setTimeout(x, opts.pauseMs ?? 250)); // Socrata courtesy pacing (no app token)
     if (!fr) { out.no_match++; await db.from("intel_records").update({ fields: f, updated_at: now }).eq("id", r.id); continue; }
     out.matched++; const p = { source: "tx_franchise_tax", fetched_at: now };
     Object.assign(f, { legal_name: fr.name, taxpayer_number: fr.taxpayer_number, active_status: fr.active ? "active" : "not_active" });
