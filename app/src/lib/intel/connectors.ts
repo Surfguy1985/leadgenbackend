@@ -20,8 +20,8 @@ export const TDLR_TRADES: Record<string, { trade: string; sub: string }> = {
 };
 const ENTITY = /\b(LLC|L\.L\.C|INC|CORP|CORPORATION|CO|COMPANY|LTD|LP|PLLC|SERVICES?|MECHANICAL|ELECTRIC(AL)?|HEATING|AIR|SOLUTIONS|GROUP|ENTERPRISES?|CONTRACTORS?|SYSTEMS|ENERGY|HVAC)\b/i;
 
-async function json(ctx: Ctx, url: string, init?: { post?: unknown }) {
-  const r = await safeFetch(ctx.sourceId, url, { policy: ctx.policy, skipRobots: true, ...(init?.post ? { method: "POST" as const, jsonBody: init.post } : {}) }); // official APIs; robots governs crawlers of HTML pages
+async function json(ctx: Ctx, url: string, init?: { post?: unknown; timeoutMs?: number }) {
+  const r = await safeFetch(ctx.sourceId, url, { policy: ctx.policy, skipRobots: true, timeoutMs: init?.timeoutMs, ...(init?.post ? { method: "POST" as const, jsonBody: init.post } : {}) }); // official APIs; robots governs crawlers of HTML pages
   if (r.status !== 200) throw new Error(`http_${r.status}`); return JSON.parse(r.body.toString("utf8"));
 }
 const soql = (base: string, q: Record<string, string>) => `${base}?${new URLSearchParams(q).toString()}`;
@@ -81,23 +81,31 @@ export async function fwPermits(ctx: Ctx): Promise<Candidate[]> {
 }
 
 /** USAspending: recent contract awards performed in DFW counties for construction/services NAICS -> buyer prospects + awardee contractors. */
-export async function usaspending(ctx: Ctx): Promise<Candidate[]> {
-  const end = new Date().toISOString().slice(0, 10); const start = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
-  const body = { filters: { time_period: [{ start_date: start, end_date: end }], award_type_codes: ["A", "B", "C", "D"], naics_codes: { require: ["23", "5617"] },
-    place_of_performance_locations: ["113", "439", "085", "121"].map(county => ({ country: "USA", state: "TX", county })) },
-    fields: ["Award ID", "Recipient Name", "Recipient UEI", "Award Amount", "Awarding Agency", "Awarding Sub Agency", "Start Date", "End Date", "NAICS", "Place of Performance City Code", "generated_internal_id"],
-    limit: Math.min(ctx.limit, 100), page: 1, sort: "Start Date", order: "desc" };
-  const d: any = await json(ctx, "https://api.usaspending.gov/api/v2/search/spending_by_award/", { post: body });
-  const out: Candidate[] = [];
-  for (const a of d.results ?? []) {
-    const url = `https://www.usaspending.gov/award/${a.generated_internal_id}`;
-    out.push({ external_id: `buyer:${a["Awarding Sub Agency"] ?? a["Awarding Agency"]}:${a["Award ID"]}`, record_type: "buyer", label: classify("award"), personal: false,
-      fields: { buyer: a["Awarding Sub Agency"] ?? a["Awarding Agency"], agency: a["Awarding Agency"], award_id: a["Award ID"], amount: a["Award Amount"], naics: a.NAICS?.code ?? a.NAICS ?? null, start: a["Start Date"], end: a["End Date"], official_url: url, awardee: a["Recipient Name"] },
-      checks: [], sources: ["usaspending"], valueUsd: a["Award Amount"] ?? null });
-    if (a["Recipient Name"]) out.push({ external_id: `awardee:${a["Recipient UEI"] ?? a["Recipient Name"]}`, record_type: "contractor", label: classify("license"), personal: false,
-      fields: { legal_name: a["Recipient Name"], uei: a["Recipient UEI"] ?? null, license_or_entity_id: a["Recipient UEI"] ?? null, last_award: a["Award ID"], last_award_amount: a["Award Amount"], official_url: url, entity_key: entityKey(a["Recipient Name"], null), trade: null, location: null, active_status: null, business_contact: null },
-      checks: [], sources: ["usaspending"] });
+const US_COUNTIES: [string, string][] = [["113", "Dallas"], ["439", "Tarrant"], ["085", "Collin"], ["121", "Denton"]];
+/** USAspending is slow: one small query per county (90-day window, 25 rows, 55s timeout each), within a ~240s budget; a slow county is skipped, not fatal. */
+export async function usaspending(ctx: Ctx, opts: { budgetMs?: number; days?: number } = {}): Promise<Candidate[]> {
+  const t0 = Date.now(); const budget = opts.budgetMs ?? 240_000;
+  const end = new Date().toISOString().slice(0, 10); const start = new Date(Date.now() - (opts.days ?? 90) * 86_400_000).toISOString().slice(0, 10);
+  const out: Candidate[] = []; let ok = 0; let lastErr: unknown = null;
+  for (const [county, countyName] of US_COUNTIES) {
+    if (Date.now() - t0 > budget - 55_000) break;
+    const body = { filters: { time_period: [{ start_date: start, end_date: end }], award_type_codes: ["A", "B", "C", "D"], naics_codes: { require: ["23", "5617"] },
+      place_of_performance_locations: [{ country: "USA", state: "TX", county }] },
+      fields: ["Award ID", "Recipient Name", "Recipient UEI", "Award Amount", "Awarding Agency", "Awarding Sub Agency", "Start Date", "End Date", "NAICS", "generated_internal_id"],
+      limit: Math.min(ctx.limit, 25), page: 1, sort: "Award Amount", order: "desc" };
+    let d: any;
+    try { d = await json(ctx, "https://api.usaspending.gov/api/v2/search/spending_by_award/", { post: body, timeoutMs: 55_000 }); ok++; } catch (e) { lastErr = e; continue; }
+    for (const a of d.results ?? []) {
+      const url = `https://www.usaspending.gov/award/${a.generated_internal_id}`;
+      out.push({ external_id: `buyer:${a["Awarding Sub Agency"] ?? a["Awarding Agency"]}:${a["Award ID"]}`, record_type: "buyer", label: classify("award"), personal: false,
+        fields: { buyer: a["Awarding Sub Agency"] ?? a["Awarding Agency"], agency: a["Awarding Agency"], award_id: a["Award ID"], amount: a["Award Amount"], naics: a.NAICS?.code ?? a.NAICS ?? null, start: a["Start Date"], end: a["End Date"], official_url: url, awardee: a["Recipient Name"], county: countyName },
+        checks: [], sources: ["usaspending"], valueUsd: a["Award Amount"] ?? null });
+      if (a["Recipient Name"]) out.push({ external_id: `awardee:${a["Recipient UEI"] ?? a["Recipient Name"]}`, record_type: "contractor", label: classify("license"), personal: false,
+        fields: { legal_name: a["Recipient Name"], uei: a["Recipient UEI"] ?? null, license_or_entity_id: a["Recipient UEI"] ?? null, last_award: a["Award ID"], last_award_amount: a["Award Amount"], official_url: url, entity_key: entityKey(a["Recipient Name"], null), trade: null, location: null, active_status: null, business_contact: null },
+        checks: [], sources: ["usaspending"] });
+    }
   }
+  if (!ok && lastErr) throw lastErr;
   return out;
 }
 export const CONNECTORS = { tdlr, fw_permits: fwPermits, usaspending } as const;
