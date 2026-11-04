@@ -1,4 +1,7 @@
-export const metadata = { title: "Crewforthat — Dashboard", robots: { index: false, follow: false } };
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en"><body style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: 24, maxWidth: 1100 }}>{children}</body></html>;
+import "./crewforthat-theme.css";
+import ThemeToggle from "./theme-toggle";
+export const metadata = { title: "Crewforthat — Find Your Next Job", robots: { index: false, follow: false } };
+const initTheme = `try{var p=localStorage.getItem("cft-theme-v1")||"system";var dark=p==="dark"||(p!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.cftTheme=dark?"dark":"light";document.documentElement.style.colorScheme=dark?"dark":"light"}catch(e){}`;
+export default function RootLayout({children}:{children:React.ReactNode}){
+ return <html lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{__html:initTheme}}/></head><body style={{margin:0,padding:0,minHeight:"100vh"}}>{children}<ThemeToggle/></body></html>;
 }
