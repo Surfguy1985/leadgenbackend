@@ -4,6 +4,7 @@ import { runSamGov } from "@/lib/connectors/samgov";
 import { env } from "@/lib/env";
 import { adminDb } from "@/lib/supabase";
 import { postDailyDigest } from "@/lib/facebook";
+import { runClaimReminders } from "@/lib/reminders";
 import { retrySweep, runFreshness } from "@/lib/workflows";
 
 export const runtime = "nodejs";
@@ -23,5 +24,6 @@ export async function GET(req: Request) {
   } catch (e) { out.webflow = { error: String(e).slice(0, 200) }; }
   // FB digest after ingest + Webflow sync so links resolve; ?fb_dry_run=1 previews without posting.
   try { out.facebook = await postDailyDigest(adminDb(), { dryRun: new URL(req.url).searchParams.get("fb_dry_run") === "1" }); } catch (e) { out.facebook = { error: String(e).slice(0, 200) }; }
+  try { out.claimReminders = await runClaimReminders(adminDb(), env.appUrl(), { dryRun: new URL(req.url).searchParams.get("dry_run") === "1" }); } catch (e) { out.claimReminders = { error: String(e).slice(0, 200) }; }
   return NextResponse.json(out);
 }

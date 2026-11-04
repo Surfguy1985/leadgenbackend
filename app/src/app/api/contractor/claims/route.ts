@@ -1,3 +1,4 @@
+import { track } from "@/lib/monetization";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { adminDb, currentUser, audit } from "@/lib/supabase";
@@ -68,6 +69,7 @@ export async function POST(req: Request) {
   if (error || !inserted) return NextResponse.json({ error: "claim_failed" }, { status: 503 });
   await db.from("moderation_queue").insert({ reason: dispute ? "business_profile_dispute" : "business_profile_claim", case_type: "claim", priority: "P1", details: { claim_id: inserted.id, organization_id: org.id, dispute } });
   await audit(uid, dispute ? "profile_claim_disputed" : "profile_claim_requested", "organization", org.id, { claim_id: inserted.id });
+  await track(db, "claim_start", { id: org.id }, { claim_id: inserted.id });
   return NextResponse.json({ ok: true, status: dispute ? "dispute_filed" : "pending_review", id: inserted.id }, { status: 201 });
 }
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));

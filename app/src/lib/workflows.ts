@@ -100,12 +100,14 @@ export async function matchAndNotify(oppId: string): Promise<boolean> {
       // publishing checkout or allowing users to self-assign a pilot entitlement.
       const pilotOrgIds = new Set((process.env.PILOT_CONTRACTOR_ORG_IDS ?? "")
         .split(",").map(x => x.trim()).filter(x => /^[0-9a-f-]{36}$/i.test(x)));
+      const { data: pri } = await db.from("priority_slots").select("organization_id").eq("trade", o.trade);
+      const priority = new Set((pri ?? []).map((r: { organization_id: string }) => r.organization_id));
       const cands: Candidate[] = [];
       for (const c of rows ?? []) {
         const owner = c.organizations?.owner_user_id ?? null; const subs = c.organizations?.subscriptions ?? [];
         let sentToday = 0;
         if (owner) { const { count } = await db.from("notifications").select("id", { count: "exact", head: true }).eq("recipient_id", owner).gte("created_at", since.toISOString()); sentToday = count ?? 0; }
-        cands.push({ ...c, owner_user_id: owner, paid: subs.some((s: { status: string }) => ["active", "trialing"].includes(s.status)) || pilotOrgIds.has(c.organization_id), alerts_left: (c.max_alerts_daily ?? 10) - sentToday });
+        cands.push({ ...c, owner_user_id: owner, paid: subs.some((s: { status: string }) => ["active", "trialing"].includes(s.status)) || pilotOrgIds.has(c.organization_id), alerts_left: (c.max_alerts_daily ?? 10) - sentToday, priority: priority.has(c.organization_id) });
       }
       const { picks, underMinTarget } = pickMatches({ ...o, subtrades: o.subtrades ?? [] }, cands);
       let emailed = 0, queued = 0;

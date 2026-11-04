@@ -1,3 +1,4 @@
+import { reserveFounding, track } from "@/lib/monetization";
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -47,6 +48,8 @@ export async function approveClaim(db: SupabaseClient, claimId: string, actor: s
   const { data: prof } = await db.from("profiles").select("role").eq("user_id", c.claimant_user_id).maybeSingle();
   if (!prof) await db.from("profiles").insert({ user_id: c.claimant_user_id, role: "contractor" });
   await db.from("contractor_profiles").upsert({ organization_id: c.organization_id }, { onConflict: "organization_id", ignoreDuplicates: true });
+  { const { data: o } = await db.from("organizations").select("id,city,primary_trade").eq("id", c.organization_id).maybeSingle();
+    if (o) { const org = { id: o.id, city: o.city, trade: o.primary_trade }; await track(db, "verified", { ...org, city: (o.city ?? "").toLowerCase() }); await reserveFounding(db, org); } }
   await db.from("audit_logs").insert({ actor, action: "profile_claim_approved", object_type: "organization", object_id: c.organization_id, metadata: { claim_id: claimId, reason, plan: "free" } });
   return { ok: true, already: false };
 }

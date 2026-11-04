@@ -24,21 +24,22 @@ export function score(o: Opp, c: Contractor, now = Date.now(), allowStatewidePub
 
 /** Private leads go to at most 5 contractors (target minimum 3). Public bids are not capped. */
 export const PRIVATE_LEAD_MAX = 5, PRIVATE_LEAD_MIN_TARGET = 3;
-export function allocate<T extends { score: number }>(kind: "private_lead" | "public_bid", ranked: T[]): { picks: T[]; underMinTarget: boolean } {
-  const sorted = [...ranked].sort((a, b) => b.score - a.score);
+export function allocate<T extends { score: number; priority?: boolean }>(kind: "private_lead" | "public_bid", ranked: T[]): { picks: T[]; underMinTarget: boolean } {
+  // Priority-slot holders (a real, capped number per city+trade; see lib/monetization) are offered private leads first.
+  const sorted = [...ranked].sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || b.score - a.score);
   if (kind !== "private_lead") return { picks: sorted, underMinTarget: false };
   const picks = sorted.slice(0, PRIVATE_LEAD_MAX);
   return { picks, underMinTarget: picks.length < PRIVATE_LEAD_MIN_TARGET };
 }
 
 /** WF-04 eligibility + ranking (in-app). Private leads need an active/trialing plan; respects remaining daily alert budget. */
-export type Candidate = Contractor & { id: string; owner_user_id: string | null; paid: boolean; alerts_left: number };
+export type Candidate = Contractor & { id: string; owner_user_id: string | null; paid: boolean; alerts_left: number; priority?: boolean };
 export function pickMatches(o: Opp & { kind: "private_lead" | "public_bid" }, cs: Candidate[], now = Date.now()) {
   const ranked = cs.flatMap(c => {
     if (!c.owner_user_id || c.alerts_left <= 0) return [];
     if (o.kind === "private_lead" && !c.paid) return [];
     const s = score(o, c, now, o.kind === "public_bid");
-    return s.eligible ? [{ contractor_id: c.id, owner_user_id: c.owner_user_id, score: s.score, factors: s.factors }] : [];
+    return s.eligible ? [{ contractor_id: c.id, owner_user_id: c.owner_user_id, score: s.score, factors: s.factors, priority: !!c.priority && c.paid }] : [];
   });
   return allocate(o.kind, ranked);
 }

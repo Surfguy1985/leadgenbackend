@@ -102,6 +102,7 @@ export default async function Admin() {
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{JSON.stringify(q.details, null, 1).slice(0, 800)}</pre>
           {writeMod && <><input name="reason" placeholder="note (optional)" /> <button name="decision" value="approved">Approve</button> <button name="decision" value="rejected">Reject</button></>}
         </form>))}
+      <p><a href="/admin/data-ops">Data Operations: sources, quality, funnel, revenue →</a></p>
       {writeMod && <><h2>Business claims ({claimRows.filter(c => c.status !== "approved").length} open)</h2>
       {claimRows.map(c => { const o = (Array.isArray(c.organizations) ? c.organizations[0] : c.organizations) as Record<string, any> | null; return (
         <form key={c.id} action={decideClaim} style={{ borderBottom: "1px solid #ddd", padding: 8 }}>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { onPlanChange } from "@/lib/monetization";
 import Stripe from "stripe";
 import { adminDb, audit } from "@/lib/supabase";
 import { env, missingEnv } from "@/lib/env";
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
         last_event_created: created,
       }, { onConflict: "stripe_subscription_id" });
       if (!deleted && isConversion(code, normStatus(sub.status))) await markConverted(db, orgId); // referral attribution (idempotent)
+      await onPlanChange(db, orgId, code, deleted ? "canceled" : normStatus(sub.status), sub.id); // funnel + real priority slots
     };
     const ledger = async (row: { stripe_object_id: string; kind: string; organization_id: string | null; amount_cents: number; currency: string; occurred_at: string }) => {
       const { error } = await db.from("billing_ledger").insert({ ...row, stripe_event_id: event.id });

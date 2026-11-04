@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { z } from "zod";
 import { adminDb, currentUser } from "@/lib/supabase";
 import { env, missingEnv } from "@/lib/env";
+import { loadSettings } from "@/lib/monetization";
 import { PAID_PLANS, trialDaysFor } from "@/lib/billing";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
@@ -25,11 +26,14 @@ export async function POST(req: Request) {
   const hadTrial = (subs ?? []).some(s => s.trial_end);
   const customer = subs?.find(s => s.stripe_customer_id)?.stripe_customer_id ?? undefined;
   const stripe = new Stripe(env.stripeSecret());
+  // Founding member: real reserved seat + admin-configured Stripe (test) coupon, applied for the life of the subscription.
+  const { data: fm } = await db.from("founding_members").select("organization_id").eq("organization_id", org.id).maybeSingle();
+  const coupon = fm ? (await loadSettings(db)).foundingCoupon : null;
   const session = await stripe.checkout.sessions.create({
     mode: "subscription", line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
     customer, customer_email: customer ? undefined : u.user.email ?? undefined, client_reference_id: org.id,
     subscription_data: { metadata: { organization_id: org.id, plan_code: plan.code }, trial_period_days: trialDaysFor(plan, hadTrial) },
-    metadata: { organization_id: org.id }, allow_promotion_codes: false,
+    metadata: { organization_id: org.id }, ...(coupon ? { discounts: [{ coupon }] } : { allow_promotion_codes: false }),
     success_url: `${env.appUrl()}/dashboard?billing=success`, cancel_url: `${env.appUrl()}/dashboard?billing=cancel`,
   }, { idempotencyKey: `checkout:${org.id}:${plan.code}:${new Date().toISOString().slice(0, 13)}` });
   return NextResponse.json({ url: session.url });

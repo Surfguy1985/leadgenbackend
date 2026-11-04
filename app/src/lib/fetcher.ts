@@ -33,7 +33,7 @@ async function robotsOk(u: URL) {
 }
 
 /** Fetch one URL for a source: rights + allowlist + https + no private IPs + robots + size/time caps + manual redirect re-checks. */
-export async function safeFetch(sourceId: string, url: string, opts: { policy?: SourcePolicy; skipRobots?: boolean } = {}) {
+export async function safeFetch(sourceId: string, url: string, opts: { policy?: SourcePolicy; skipRobots?: boolean; method?: "GET" | "POST"; jsonBody?: unknown } = {}) {
   const policy = opts.policy ?? await loadPolicy(sourceId);
   let current = url;
   for (let hop = 0; hop <= LIMITS.maxRedirects; hop++) {
@@ -41,7 +41,8 @@ export async function safeFetch(sourceId: string, url: string, opts: { policy?: 
     const u = new URL(current);
     await assertPublicHost(u.hostname);
     if (!opts.skipRobots && policy.allowed_hostnames.length) await robotsOk(u);
-    const r = await fetch(current, { headers: { "User-Agent": USER_AGENT, Accept: "application/json, text/xml, text/html;q=0.8" }, redirect: "manual", signal: AbortSignal.timeout(LIMITS.timeoutMs) });
+    const post = opts.method === "POST" && hop === 0;
+    const r = await fetch(current, { method: post ? "POST" : "GET", body: post ? JSON.stringify(opts.jsonBody ?? {}) : undefined, headers: { "User-Agent": USER_AGENT, Accept: "application/json, text/xml, text/html;q=0.8", ...(post ? { "content-type": "application/json" } : {}) }, redirect: "manual", signal: AbortSignal.timeout(LIMITS.timeoutMs) });
     if (r.status >= 300 && r.status < 400) { const loc = r.headers.get("location"); if (!loc) throw new FetchDenied("redirect_without_location"); current = new URL(loc, current).toString(); continue; }
     const len = Number(r.headers.get("content-length") ?? 0); if (len > LIMITS.maxBytes) throw new FetchDenied("too_large");
     const reader = r.body?.getReader(); const chunks: Uint8Array[] = []; let n = 0;
