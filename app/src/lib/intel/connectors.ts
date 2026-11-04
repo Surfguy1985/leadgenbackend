@@ -115,12 +115,15 @@ export async function usaspending(ctx: Ctx, opts: { budgetMs?: number; days?: nu
 export async function civicplusBids(ctx: Ctx): Promise<Candidate[]> {
   const base = (ctx.source?.base_url ?? "").replace(/\/$/, ""); const agency = ctx.source?.data_owner ?? null; if (!base || !agency) throw new Error("source_missing_base_url_or_owner");
   const city = agency.replace(/^(City|Town) of\s+/i, "").trim();
-  const list = await fcScrape(`${base}/Bids.aspx`); if (list.status !== 200) throw new Error(`list_http_${list.status}`);
+  // Firecrawl first (live); if it times out, the same public page via our robots-checked fetcher. Either way the HTML is parsed deterministically.
+  const get = async (url: string) => { try { const r = await fcScrape(url, 35_000); if (r.html) return { html: r.html, status: r.status }; } catch { /* fall through */ }
+    const r = await safeFetch(ctx.sourceId, url, { policy: ctx.policy, timeoutMs: 25_000 }); return { html: r.body.toString("utf8"), status: r.status }; };
+  const list = await get(`${base}/Bids.aspx`); if (list.status !== 200) throw new Error(`list_http_${list.status}`);
   const out: Candidate[] = [];
   for (const [i, id] of listBidIds(list.html).slice(0, Math.min(ctx.limit, 25)).entries()) {
     if (i) await new Promise(r => setTimeout(r, 10_000)); // robots.txt Crawl-delay: 10 (per host)
     const url = `${base}/Bids.aspx?bidID=${id}`;
-    const d = await fcScrape(url).catch(() => null); if (!d) continue;
+    const d = await get(url).catch(() => null); if (!d) continue;
     const b = parseBid(d.html); const trade = bidTrade(b); if (!trade) continue; // out of scope (e.g. IT, vehicles)
     const deadline = parseClose(b.closes); const open = /^open$/i.test(b.status ?? "");
     out.push({ external_id: `civicplus:${new URL(base).hostname}:${id}`, record_type: "job", label: classify("solicitation", { open }), personal: false,

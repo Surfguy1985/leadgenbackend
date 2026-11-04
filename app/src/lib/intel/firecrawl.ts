@@ -6,8 +6,8 @@ async function call(path: string, body: unknown, timeoutMs = 60_000) {
   if (!r.ok) throw new Error(`firecrawl_http_${r.status}`); return r.json() as Promise<any>;
 }
 /** Live fetch (maxAge 0) of raw HTML; returns the origin status code so "URL resolves" is a real check. */
-export async function fcScrape(url: string): Promise<{ html: string; markdown: string; status: number }> {
-  const d = await call("scrape", { url, formats: ["rawHtml", "markdown"], maxAge: 0, onlyMainContent: false, timeout: 45_000 });
+export async function fcScrape(url: string, timeoutMs = 60_000): Promise<{ html: string; markdown: string; status: number }> {
+  const d = await call("scrape", { url, formats: ["rawHtml", "markdown"], maxAge: 0, onlyMainContent: false, timeout: timeoutMs - 5_000 }, timeoutMs);
   return { html: d?.data?.rawHtml ?? "", markdown: d?.data?.markdown ?? "", status: Number(d?.data?.metadata?.statusCode ?? 0) };
 }
 export async function fcSearch(query: string, limit = 5): Promise<{ url: string; title?: string }[]> {
