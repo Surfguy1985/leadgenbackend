@@ -20,7 +20,22 @@ export default function ThemeToggle(){
   media.addEventListener?.("change",changed);
   const synced=(event:StorageEvent)=>{if(event.key===KEY){const v=read();setPreference(v);apply(v);}};
   window.addEventListener("storage",synced);
-  return ()=>{media.removeEventListener?.("change",changed);window.removeEventListener("storage",synced);};
+  // Browser storage is origin-scoped. Carry the chosen appearance in a harmless
+  // URL parameter only when the user follows a link to the public Webflow site.
+  const shareTheme = (event:MouseEvent) => {
+    const node=event.target;
+    if(!(node instanceof Element))return;
+    const anchor=node.closest<HTMLAnchorElement>("a[href]");
+    if(!anchor)return;
+    try {
+      const target=new URL(anchor.href,window.location.href);
+      if(target.hostname!=="lead-gen-site-dc4966.webflow.io")return;
+      target.searchParams.set("appearance",read());
+      anchor.href=target.href;
+    } catch {}
+  };
+  document.addEventListener("click",shareTheme,true);
+  return ()=>{media.removeEventListener?.("change",changed);window.removeEventListener("storage",synced);document.removeEventListener("click",shareTheme,true);};
  },[]);
  function change(){
   const order:Preference[]=["system","light","dark"];
