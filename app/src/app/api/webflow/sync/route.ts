@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   const db = adminDb();
 
   const { data: rows } = await db.from("opportunities")
-    .select("id,kind,listing_type,title,summary,trade,city,zip,deadline,source_url,official_apply_url,published_at,last_verified_at,last_checked_at,geographic_scope,hide_after,webflow_item_id,updated_at,webflow_synced_at")
+    .select("id,kind,listing_type,title,summary,trade,city,zip,deadline,source_url,official_apply_url,published_at,last_verified_at,last_checked_at,geographic_scope,quality_score,hide_after,webflow_item_id,updated_at,webflow_synced_at")
     .in("kind", ["public_bid", "discovery_signal"]).order("updated_at", { ascending: false }).limit(500);
   const now = new Date().toISOString();
   // changed rows, plus live rows whose hide_after has passed (time-based hide doesn't bump updated_at)

@@ -11,10 +11,11 @@
 (function(){
   var API='https://archangel-leadgen.vercel.app/api/public/opportunities', list=document.getElementById('cft-list');
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  var P=new URLSearchParams(location.search),QS='';['trade','city'].forEach(function(k){var v=(P.get(k)||'').slice(0,60);if(v)QS+='&'+k+'='+encodeURIComponent(v)});
   function safeUrl(u){return /^https:\/\//.test(u||'')?u:''}
   async function load(tab){
     list.textContent='Loading…';
-    try{ var r=await fetch(API+'?tab='+tab), j=await r.json();
+    try{ var r=await fetch(API+'?tab='+tab+QS), j=await r.json();
       if(!j.items||!j.items.length){list.textContent='No listings right now. Check back soon.';return;}
       list.innerHTML=j.items.map(function(o){var link=safeUrl(o.official_apply_url)||safeUrl(o.source_url);
         return '<article class="cft-card"><h3>'+esc(o.title)+'</h3><p>'+esc(o.trade)+' · '+esc(o.geographic_scope==='statewide'?'Statewide (TX)':(o.city||o.zip||''))+(o.deadline?' · Due '+esc(new Date(o.deadline).toLocaleDateString()):'')+'</p>'

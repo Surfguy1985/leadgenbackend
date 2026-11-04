@@ -9,14 +9,14 @@ export function tabFor(listingType: string | null, kind: string): "jobs_now" | "
 }
 const SITE = "https://lead-gen-site-dc4966.webflow.io";
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "item";
-type Opp = { id: string; kind: string; listing_type?: string | null; title: string; summary?: string | null; trade: string; city?: string | null; zip?: string | null; deadline?: string | null; source_url?: string | null; official_apply_url?: string | null; published_at?: string | null; last_verified_at?: string | null; last_checked_at?: string | null; geographic_scope?: string | null };
+type Opp = { id: string; kind: string; listing_type?: string | null; title: string; summary?: string | null; trade: string; city?: string | null; zip?: string | null; deadline?: string | null; source_url?: string | null; official_apply_url?: string | null; published_at?: string | null; last_verified_at?: string | null; last_checked_at?: string | null; geographic_scope?: string | null; quality_score?: number | null };
 export function oppFields(o: Opp) {
   return {
     name: o.title.slice(0, 256), slug: `${slugify(o.trade)}-${o.id.slice(0, 8)}`, "detail-url": `${SITE}/opportunities/${slugify(o.trade)}-${o.id.slice(0, 8)}`, "opportunity-id": o.id, summary: (o.summary ?? "").slice(0, 2000),
     "kind-label": OPP_LABEL[o.kind] ?? o.kind, trade: o.trade, "trade-label": tradeLabel(o.trade), city: o.city ?? "", zip: o.zip ?? "",
     deadline: o.deadline ?? null, "source-url": o.source_url ?? "", "published-date": o.published_at ?? null, "last-verified": o.last_verified_at ?? null,
     tab: tabFor(o.listing_type ?? null, o.kind), "listing-type": o.listing_type ?? o.kind, "geographic-scope": o.geographic_scope ?? "",
-    "official-apply-url": o.official_apply_url ?? "", "last-checked": o.last_checked_at ?? o.last_verified_at ?? null,
+    "official-apply-url": o.official_apply_url ?? "", "last-checked": o.last_checked_at ?? o.last_verified_at ?? null, "quality-score": o.quality_score ?? 0,
   };
 }
 type Org = { id: string; business_name: string; kind: string; city?: string | null; zip?: string | null; public_website?: string | null; vendor_onboarding_url?: string | null; claim_status: string; last_checked_at?: string | null; slug?: string | null; quality_score?: number | null };
