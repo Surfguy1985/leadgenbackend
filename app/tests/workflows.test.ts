@@ -36,3 +36,21 @@ test("pickMatches caps private leads at 5", () => {
   const cs = Array.from({ length: 8 }, (_, i) => ({ ...base, id: `c${i}` }));
   const r = pickMatches(opp, cs); assert.equal(r.picks.length, 5); assert.equal(r.underMinTarget, false);
 });
+
+test("statewide contractors can match public bids beyond their listed ZIPs", () => {
+  const statewide: Candidate = { ...base, id: "statewide", paid: false, statewide: true, zip_codes: [], owner_user_id: "pilot-user" };
+  const publicBid = { ...opp, kind: "public_bid" as const, zip: "79901" };
+  const result = pickMatches(publicBid, [statewide]);
+  assert.deepEqual(result.picks.map(p => p.contractor_id), ["statewide"]);
+});
+
+test("statewide setting never overrides ZIP eligibility for private leads", () => {
+  const statewide: Candidate = { ...base, id: "statewide", statewide: true, zip_codes: [], owner_user_id: "pilot-user" };
+  assert.equal(pickMatches(opp, [statewide]).picks.length, 0);
+});
+
+test("private-lead matching remains restricted to explicitly eligible pilot or paid contractor records", () => {
+  const free: Candidate = { ...base, id: "free", paid: false };
+  const pilotEntitled: Candidate = { ...base, id: "pilot", paid: true };
+  assert.deepEqual(pickMatches(opp, [free, pilotEntitled]).picks.map(p => p.contractor_id), ["pilot"]);
+});
