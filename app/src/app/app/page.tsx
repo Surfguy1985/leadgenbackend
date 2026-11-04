@@ -7,6 +7,7 @@ type SavedItem = { id:string; opportunity_id:string };
 export default function ContractorFeed() {
   const [items,setItems] = useState<Opportunity[]>([]);
   const [saved,setSaved] = useState<Record<string,string>>({});
+  const [compare,setCompare] = useState<string[]>([]);
   const [tab,setTab] = useState<"jobs_now"|"upcoming"|"buyers">("jobs_now");
   const [query,setQuery] = useState("");
   const [trade,setTrade] = useState("");
@@ -58,6 +59,7 @@ export default function ContractorFeed() {
     setZip(/^\d{0,5}$/.test(params.get("zip")||"")?(params.get("zip")||""):"");
     setTrade((params.get("trade")||"").slice(0,80));
   },[]);
+  function toggleCompare(id:string){setCompare(prev=>prev.includes(id)?prev.filter(x=>x!==id):prev.length<3?[...prev,id]:prev)}
   async function toggle(i:Opportunity) {
     if(busy)return;setBusy(i.id);setError("");
     try {
@@ -99,7 +101,10 @@ export default function ContractorFeed() {
     .cf-feed__apply{display:inline-flex;padding:14px 19px;background:#28243F;color:#fff;text-decoration:none;font-size:12px;font-weight:850;border-radius:100px}
     .cf-feed__save{border:1px solid #E7E1EE;border-radius:100px;background:#fff;color:#655B76;padding:13px 18px;font-size:12px;font-weight:850;cursor:pointer}
     .cf-feed__save[aria-pressed="true"]{background:#EAE4FF;border-color:#BBA8F5;color:#5E43BF}
-    .cf-feed__save:disabled{opacity:.6;cursor:wait}.cf-feed__report{font-size:11px;color:#8C8499;text-decoration:underline;align-self:center;text-underline-offset:3px}
+    .cf-feed__save:disabled{opacity:.6;cursor:wait}.cf-feed__compare{border:1px solid #E8E1EF;background:#fff;border-radius:100px;font-size:12px;font-weight:850;color:#594F70;padding:13px 17px;cursor:pointer}.cf-feed__compare[aria-pressed="true"]{background:#EDF7E7;color:#3C713B;border-color:#CEECBD}.cf-feed__compare:disabled{opacity:.5;cursor:not-allowed}
+    .cf-feed__compare-tray{position:sticky;bottom:15px;margin:20px auto 0;z-index:10;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;border:1px solid #D6CBEE;background:#28233F;color:#fff;border-radius:23px;padding:17px 21px;box-shadow:0 17px 45px rgba(33,23,67,.22)}
+    .cf-feed__compare-tray strong{font-size:14px}.cf-feed__compare-tray span{font-size:12px;color:#DCD5F3}
+    .cf-feed__compare-tray a{padding:13px 18px;border-radius:100px;text-decoration:none;background:#CFF2A8;color:#293E2C;font-weight:850;font-size:12px}.cf-feed__compare-tray button{border:0;background:transparent;color:white;font-size:12px;font-weight:800;cursor:pointer}.cf-feed__report{font-size:11px;color:#8C8499;text-decoration:underline;align-self:center;text-underline-offset:3px}
     .cf-feed__empty{border:1px dashed #D7CBF1;border-radius:25px;background:#F5F0FF;padding:38px;font-size:14px;color:#756D84;line-height:1.6}.cf-feed__empty h2{color:#25213C;font-size:27px;letter-spacing:-.04em;margin:0 0 10px}
     .cf-feed__error{background:#FFF0EA;border-radius:14px;padding:17px;color:#8B4133}
     .cf-feed__footnote{margin:25px 0 0;color:#938C9B;font-size:12px;line-height:1.65}
@@ -121,9 +126,10 @@ export default function ContractorFeed() {
         <div className="cf-feed__chips"><span className="cf-feed__chip">OFFICIAL PUBLIC NOTICE</span><span className="cf-feed__chip cf-feed__chip--city">{item.city||item.zip||"Texas"}</span></div>
         <h2><a className="cf-feed__title-link" href={"/app/opportunity/"+encodeURIComponent(item.id)}>{item.title}</a></h2><p>{item.summary||"Review the official solicitation for scope, eligibility and requirements."}</p>
         <div className="cf-feed__details">Trade: {item.trade.replaceAll("_"," ")} · {item.deadline?"Deadline "+new Date(item.deadline).toLocaleDateString("en-US"):"Confirm deadline with the official source"}</div>
-        <div className="cf-feed__actions"><a className="cf-feed__apply" href={"/app/opportunity/"+encodeURIComponent(item.id)}>Review opportunity ↗</a><button type="button" className="cf-feed__save" disabled={busy===item.id} aria-pressed={!!saved[item.id]} onClick={()=>void toggle(item)}>{busy===item.id?"Saving…":saved[item.id]?"★ Saved":"☆ Save"}</button><a className="cf-feed__report" href={"/report-listing?id="+encodeURIComponent(item.id)}>Report issue</a></div>
+        <div className="cf-feed__actions"><a className="cf-feed__apply" href={"/app/opportunity/"+encodeURIComponent(item.id)}>Review opportunity ↗</a><button type="button" className="cf-feed__save" disabled={busy===item.id} aria-pressed={!!saved[item.id]} onClick={()=>void toggle(item)}>{busy===item.id?"Saving…":saved[item.id]?"★ Saved":"☆ Save"}</button><button type="button" className="cf-feed__compare" disabled={compare.length>=3&&!compare.includes(item.id)} aria-pressed={compare.includes(item.id)} onClick={()=>toggleCompare(item.id)}>{compare.includes(item.id)?"✓ Comparing":"+ Compare"}</button><a className="cf-feed__report" href={"/report-listing?id="+encodeURIComponent(item.id)}>Report issue</a></div>
       </article>)}</div>:
       <section className="cf-feed__empty"><h2>No verified opportunities match right now.</h2><p>Try a broader trade or location. We don't add placeholder job listings or invent open contracts.</p><button className="cf-feed__save" onClick={()=>{setQuery("");setTrade("");setZip("")}}>Clear filters</button></section>}
+    {compare.length>0&&<aside className="cf-feed__compare-tray" role="region" aria-label="Selected opportunities for comparison"><div><strong>Compare opportunities</strong><br/><span>{compare.length} of 3 selected</span></div><a href={"/app/compare?ids="+encodeURIComponent(compare.join(","))}>Compare side by side ↗</a><button type="button" onClick={()=>setCompare([])}>Clear selection</button></aside>}
     <p className="cf-feed__footnote">Public bids do not guarantee work. Source deadlines, changes, eligibility and official application requirements always take priority.</p>
   </div></main>;
 }
