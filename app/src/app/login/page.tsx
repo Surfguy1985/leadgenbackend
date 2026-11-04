@@ -1,6 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { safeNext } from "@/lib/safeNext";
 
 /** Passwordless contractor access. RLS and server-side cookies enforce authorization. */
 export default function Login() {
@@ -21,7 +22,7 @@ export default function Login() {
       const sb = createBrowserClient(url, key);
       const result = await sb.auth.signInWithOtp({
         email: email.trim().toLowerCase(),
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: { emailRedirectTo: (() => { const n = safeNext(new URLSearchParams(window.location.search).get("next")); return `${window.location.origin}/auth/callback${n ? `?next=${encodeURIComponent(n)}` : ""}`; })() },
       });
       if (result.error) throw new Error("We couldn't send the sign-in link. Check your address and try again.");
       setSent(true);
