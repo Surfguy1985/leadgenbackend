@@ -22,7 +22,7 @@ export async function runSource(db: SupabaseClient, src: any, opts: { force?: bo
   const tally = { fetched: 0, published: 0, review: 0, orgs_upserted: 0, opps_upserted: 0, dry_run: !!src.dry_run, gates: {} as Record<string, number>, buckets: [0, 0, 0, 0, 0] };
   const run = await withIngestionRun(src.id, async () => {
     const policy = await loadPolicy(src.id);
-    const ctx: Ctx = { sourceId: src.id, policy, fetchedAt, limit: opts.limit ?? 2000, lookups: {} };
+    const ctx: Ctx = { sourceId: src.id, policy, fetchedAt, limit: opts.limit ?? 2000, lookups: {}, source: { base_url: src.base_url, data_owner: src.data_owner, name: src.name } };
     if (ft) { const fp = await loadPolicy(ft.id); ctx.lookups.franchise = franchiseLookup({ ...ctx, sourceId: ft.id, policy: fp }); }
     const { count: seen } = await db.from("intel_records").select("id", { count: "exact", head: true }).eq("source_id", src.id);
     const cands = await fn(ctx, src.connector === "tdlr" ? (seen ?? 0) % 7000 : 0);
@@ -48,7 +48,7 @@ export async function runSource(db: SupabaseClient, src: any, opts: { force?: bo
 }
 
 /** Entity resolution: one organization per entity_key (fallback license/UEI). Never overwrites a claimed org's profile; only adds verification. */
-async function resolveOrg(db: SupabaseClient, src: any, c: Candidate, e: { score: number; breakdown: unknown }, publish: boolean) {
+export async function resolveOrg(db: SupabaseClient, src: any, c: Candidate, e: { score: number; breakdown: unknown }, publish: boolean) {
   const f = c.fields as any; const key = f.entity_key as string;
   let q = db.from("organizations").select("id,claim_status,verification_sources,quality_score").limit(1);
   q = f.uei ? q.or(`entity_key.eq.${JSON.stringify(key)},uei.eq.${f.uei}`) : f.license_number ? q.or(`entity_key.eq.${JSON.stringify(key)},license_number.eq.${f.license_number}`) : q.eq("entity_key", key);

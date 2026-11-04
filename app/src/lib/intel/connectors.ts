@@ -1,5 +1,7 @@
 import { safeFetch } from "@/lib/fetcher";
 import type { SourcePolicy } from "@/lib/fetchPolicy";
+import { fcScrape } from "./firecrawl";
+import { listBidIds, parseBid, parseClose, bidTrade } from "./civicplus";
 import { classify, entityKey, type Check, type Label } from "@/lib/quality";
 
 /** A normalised candidate from any connector. Only source fields; nothing invented. */
@@ -8,12 +10,12 @@ export type Candidate = {
   fields: Record<string, unknown>; checks: Check[]; sources: string[]; status?: string | null; deadline?: string | null;
   trade?: string | null; valueUsd?: number | null; distanceMiles?: number | null; personal: boolean; conflicts?: string[];
 };
-export type Ctx = { sourceId: string; policy: SourcePolicy; fetchedAt: string; lookups: { franchise?: (name: string, county?: string) => Promise<FranchiseHit | null> } ; limit: number };
+export type Ctx = { sourceId: string; policy: SourcePolicy; fetchedAt: string; lookups: { franchise?: (name: string, county?: string) => Promise<FranchiseHit | null> } ; limit: number; source?: { base_url?: string | null; data_owner?: string | null; name?: string } };
 export type FranchiseHit = { taxpayer_number: string; name: string; city: string | null; zip: string | null; address: string | null; active: boolean; sourceId: string };
 
 const DFW_COUNTIES = ["DALLAS", "TARRANT", "COLLIN", "DENTON"];
 const COUNTY_CODE: Record<string, number> = { DALLAS: 57, TARRANT: 220, COLLIN: 43, DENTON: 61 };
-const DFW_CITY = /^(DALLAS|FORT WORTH|ARLINGTON|PLANO|IRVING|GARLAND|FRISCO|MCKINNEY|GRAND PRAIRIE|DENTON|MESQUITE|CARROLLTON|RICHARDSON|LEWISVILLE|ALLEN|FLOWER MOUND|NORTH RICHLAND HILLS|MANSFIELD|EULESS|BEDFORD|GRAPEVINE|KELLER|COPPELL|ROWLETT|ROCKWALL|WYLIE|ADDISON|FARMERS BRANCH|HURST|COLLEYVILLE|SOUTHLAKE|THE COLONY|LITTLE ELM|PROSPER|CELINA|BURLESON|HALTOM CITY|WATAUGA|SACHSE|DUNCANVILLE|DESOTO|CEDAR HILL|LANCASTER|BALCH SPRINGS|HIGHLAND PARK|UNIVERSITY PARK|SAGINAW|AZLE|WHITE SETTLEMENT|BENBROOK|CROWLEY|FOREST HILL|KENNEDALE|RICHLAND HILLS|CORINTH|HIGHLAND VILLAGE|THE COLONY|MURPHY|PARKER|LUCAS|FAIRVIEW|ANNA|MELISSA|PRINCETON|SEAGOVILLE|HUTCHINS|WILMER|GLENN HEIGHTS|SUNNYVALE)$/i;
+export const DFW_CITY = /^(DALLAS|FORT WORTH|ARLINGTON|PLANO|IRVING|GARLAND|FRISCO|MCKINNEY|GRAND PRAIRIE|DENTON|MESQUITE|CARROLLTON|RICHARDSON|LEWISVILLE|ALLEN|FLOWER MOUND|NORTH RICHLAND HILLS|MANSFIELD|EULESS|BEDFORD|GRAPEVINE|KELLER|COPPELL|ROWLETT|ROCKWALL|WYLIE|ADDISON|FARMERS BRANCH|HURST|COLLEYVILLE|SOUTHLAKE|THE COLONY|LITTLE ELM|PROSPER|CELINA|BURLESON|HALTOM CITY|WATAUGA|SACHSE|DUNCANVILLE|DESOTO|CEDAR HILL|LANCASTER|BALCH SPRINGS|HIGHLAND PARK|UNIVERSITY PARK|SAGINAW|AZLE|WHITE SETTLEMENT|BENBROOK|CROWLEY|FOREST HILL|KENNEDALE|RICHLAND HILLS|CORINTH|HIGHLAND VILLAGE|THE COLONY|MURPHY|PARKER|LUCAS|FAIRVIEW|ANNA|MELISSA|PRINCETON|SEAGOVILLE|HUTCHINS|WILMER|GLENN HEIGHTS|SUNNYVALE)$/i;
 export const TDLR_TRADES: Record<string, { trade: string; sub: string }> = {
   "A/C Contractor": { trade: "residential_repair", sub: "hvac" }, "Electrical Contractor": { trade: "residential_repair", sub: "electrical" },
   "Electrical Sign Contractor": { trade: "commercial_construction", sub: "signage" }, "Elevator Contractor": { trade: "commercial_construction", sub: "elevator" },
@@ -108,4 +110,23 @@ export async function usaspending(ctx: Ctx, opts: { budgetMs?: number; days?: nu
   if (!ok && lastErr) throw lastErr;
   return out;
 }
-export const CONNECTORS = { tdlr, fw_permits: fwPermits, usaspending } as const;
+/** Public CivicPlus Bid Postings (robots.txt allows /Bids.aspx for *). Fetched via Firecrawl (live, maxAge 0); parsed deterministically.
+ *  Agency = sources.data_owner, city = the agency's own city (from the registry, not guessed). Contact names/emails/phones are never stored. */
+export async function civicplusBids(ctx: Ctx): Promise<Candidate[]> {
+  const base = (ctx.source?.base_url ?? "").replace(/\/$/, ""); const agency = ctx.source?.data_owner ?? null; if (!base || !agency) throw new Error("source_missing_base_url_or_owner");
+  const city = agency.replace(/^(City|Town) of\s+/i, "").trim();
+  const list = await fcScrape(`${base}/Bids.aspx`); if (list.status !== 200) throw new Error(`list_http_${list.status}`);
+  const out: Candidate[] = [];
+  for (const id of listBidIds(list.html).slice(0, Math.min(ctx.limit, 25))) {
+    const url = `${base}/Bids.aspx?bidID=${id}`;
+    const d = await fcScrape(url).catch(() => null); if (!d) continue;
+    const b = parseBid(d.html); const trade = bidTrade(b); if (!trade) continue; // out of scope (e.g. IT, vehicles)
+    const deadline = parseClose(b.closes); const open = /^open$/i.test(b.status ?? "");
+    out.push({ external_id: `civicplus:${new URL(base).hostname}:${id}`, record_type: "job", label: classify("solicitation", { open }), personal: false,
+      fields: { title: b.title, buyer: agency, location: city, city, trade, deadline, official_url: url, bid_number: b.bid_number, category: b.category, status: b.status, published: b.published, closes_raw: b.closes, description: b.description },
+      checks: [{ name: "source_url_resolves", ok: d.status === 200, detail: String(d.status) }, { name: "status_open", ok: open, detail: b.status ?? undefined }, { name: "bid_number_present", ok: !!b.bid_number }],
+      sources: ["civicplus_bids"], status: open ? "open" : b.status, deadline, trade });
+  }
+  return out;
+}
+export const CONNECTORS = { tdlr, fw_permits: fwPermits, usaspending, civicplus_bids: civicplusBids } as const;

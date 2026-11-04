@@ -4,7 +4,7 @@ import type { Candidate } from "./connectors";
  *  - USAspending award  -> 'upcoming_forecast' (contract ends within 18 months: possible recompete, is_inferred) or 'buyer_prospect'
  *  - Fort Worth permit  -> 'buyer_prospect' project signal, NON-residential only (residential permits never leave intel_records) */
 export type PromotedOpp = {
-  source_record_id: string; kind: "discovery_signal"; listing_type: "upcoming_forecast" | "buyer_prospect"; title: string; summary: string;
+  source_record_id: string; kind: "discovery_signal" | "public_bid"; listing_type: "upcoming_forecast" | "buyer_prospect" | "public_bid"; title: string; summary: string;
   trade: string; city: string | null; zip: string | null; geographic_scope: "zip" | "city" | "metro"; source_url: string | null; official_apply_url: string | null;
   deadline: string | null; hide_after: string | null; is_inferred: boolean; intel_label: string; budget_min: number | null; budget_max: number | null;
 };
@@ -42,6 +42,13 @@ export function promote(c: Candidate, now = Date.now()): PromotedOpp | null {
       deadline: null, hide_after: upcoming ? new Date(endMs).toISOString() : new Date(now + 180 * 86_400_000).toISOString(), is_inferred: upcoming,
       intel_label: c.label, budget_min: null, budget_max: null,
     };
+  }
+  if (c.record_type === "job") {
+    if (!f.title || !f.official_url || !f.deadline || c.label !== "active_job") return null;
+    return { source_record_id: c.external_id, kind: "public_bid", listing_type: "public_bid", title: String(f.title).slice(0, 300),
+      summary: [f.bid_number ? `Bid ${f.bid_number}` : null, `Agency: ${f.buyer}`, f.category ? `Category: ${f.category}` : null, f.closes_raw ? `Closes ${f.closes_raw} (Central)` : null, f.description ? String(f.description).slice(0, 600) : null].filter(Boolean).join(" · "),
+      trade: String(f.trade), city: f.city ?? null, zip: null, geographic_scope: "city", source_url: f.official_url, official_apply_url: f.official_url,
+      deadline: new Date(f.deadline).toISOString(), hide_after: new Date(f.deadline).toISOString(), is_inferred: false, intel_label: c.label, budget_min: null, budget_max: null };
   }
   if (c.record_type === "permit_signal") {
     if (f.residential || !f.permit_no) return null; // residential: never public (homeowner proximity)
