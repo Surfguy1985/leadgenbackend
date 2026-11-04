@@ -92,7 +92,7 @@ export default function ContractorFeed() {
     .cf-feed__card{background:#fff;border:1px solid #E9E5F0;border-radius:25px;padding:clamp(23px,3vw,32px);display:flex;flex-direction:column;min-height:285px}
     .cf-feed__chips{display:flex;gap:8px;flex-wrap:wrap}.cf-feed__chip{border-radius:100px;padding:9px 12px;background:#F1ECFF;color:#7158C5;font-size:10px;font-weight:850;letter-spacing:.05em}
     .cf-feed__chip--city{background:#F3F8E9;color:#5B7746}
-    .cf-feed__card h2{font-size:clamp(20px,2.2vw,27px);line-height:1.25;letter-spacing:-.051em;margin:19px 0 12px;overflow-wrap:anywhere}
+    .cf-feed__card h2{font-size:clamp(20px,2.2vw,27px);line-height:1.25;letter-spacing:-.051em;margin:19px 0 12px;overflow-wrap:anywhere}.cf-feed__title-link{color:inherit;text-decoration:none}.cf-feed__title-link:hover{color:#7056D5}.cf-feed__title-link:focus-visible{outline:3px solid #7759DA;outline-offset:4px}
     .cf-feed__card p{font-size:14px;line-height:1.65;color:#7A7485;margin:0 0 18px}
     .cf-feed__details{font-size:12px;color:#8A8192;line-height:1.55;margin-bottom:16px}
     .cf-feed__actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid #F0EDF4;margin-top:auto;padding-top:20px}
@@ -119,9 +119,9 @@ export default function ContractorFeed() {
     {loading?<p role="status">Loading official opportunities…</p>:filtered.length?
       <div className="cf-feed__grid">{filtered.map(item=><article className="cf-feed__card" key={item.id}>
         <div className="cf-feed__chips"><span className="cf-feed__chip">OFFICIAL PUBLIC NOTICE</span><span className="cf-feed__chip cf-feed__chip--city">{item.city||item.zip||"Texas"}</span></div>
-        <h2>{item.title}</h2><p>{item.summary||"Review the official solicitation for scope, eligibility and requirements."}</p>
+        <h2><a className="cf-feed__title-link" href={"/app/opportunity/"+encodeURIComponent(item.id)}>{item.title}</a></h2><p>{item.summary||"Review the official solicitation for scope, eligibility and requirements."}</p>
         <div className="cf-feed__details">Trade: {item.trade.replaceAll("_"," ")} · {item.deadline?"Deadline "+new Date(item.deadline).toLocaleDateString("en-US"):"Confirm deadline with the official source"}</div>
-        <div className="cf-feed__actions"><a className="cf-feed__apply" href={item.official_apply_url||item.source_url||"#"} target="_blank" rel="noopener noreferrer">Official notice ↗</a><button type="button" className="cf-feed__save" disabled={busy===item.id} aria-pressed={!!saved[item.id]} onClick={()=>void toggle(item)}>{busy===item.id?"Saving…":saved[item.id]?"★ Saved":"☆ Save"}</button><a className="cf-feed__report" href={"/report-listing?id="+encodeURIComponent(item.id)}>Report issue</a></div>
+        <div className="cf-feed__actions"><a className="cf-feed__apply" href={"/app/opportunity/"+encodeURIComponent(item.id)}>Review opportunity ↗</a><button type="button" className="cf-feed__save" disabled={busy===item.id} aria-pressed={!!saved[item.id]} onClick={()=>void toggle(item)}>{busy===item.id?"Saving…":saved[item.id]?"★ Saved":"☆ Save"}</button><a className="cf-feed__report" href={"/report-listing?id="+encodeURIComponent(item.id)}>Report issue</a></div>
       </article>)}</div>:
       <section className="cf-feed__empty"><h2>No verified opportunities match right now.</h2><p>Try a broader trade or location. We don't add placeholder job listings or invent open contracts.</p><button className="cf-feed__save" onClick={()=>{setQuery("");setTrade("");setZip("")}}>Clear filters</button></section>}
     <p className="cf-feed__footnote">Public bids do not guarantee work. Source deadlines, changes, eligibility and official application requirements always take priority.</p>
