@@ -16,7 +16,7 @@ export async function enrichDirectory(db: SupabaseClient, opts: { max?: number; 
   const { data: recs } = await db.from("intel_records").select("id,external_id,fields,provenance,label,fetched_at,organization_id")
     .eq("source_id", src.id).eq("status", "review").eq("record_type", "contractor").eq("contains_personal_data", false)
     .or("fields->>city.is.null,fields->>business_contact.is.null").or(`fields->>enrich_checked_at.is.null,fields->>enrich_checked_at.lt.${cutoff}`)
-    .order("score", { ascending: false }).limit(opts.max ?? 15);
+    .not("fields->>active_status", "eq", "expired").order("score", { ascending: false }).limit(opts.max ?? 15);
   const th = await threshold(db);
   for (const r of recs ?? []) {
     if (Date.now() - t0 > (opts.budgetMs ?? 150_000)) break;
@@ -40,7 +40,7 @@ export async function enrichDirectory(db: SupabaseClient, opts: { max?: number; 
       const e = evaluate(c, now, 1, th); out.enriched++;
       await db.from("intel_records").update({ fields: f, provenance: prov, score: e.score, score_breakdown: e.breakdown, gate_failures: e.gates, status: e.status, fetched_at: now, updated_at: now }).eq("id", r.id);
       if (e.status === "published") { out.published++; const id = await resolveOrg(db, src, c, e, true); if (id && !r.organization_id) await db.from("intel_records").update({ organization_id: id }).eq("id", r.id); }
-    } catch (e) { out.errors++; if (out.error_sample.length < 3) out.error_sample.push(String(e).slice(0, 120)); }
+    } catch (e) { if (/429/.test(String(e))) { (out as any).rate_limited = true; break; } out.errors++; if (out.error_sample.length < 3) out.error_sample.push(String(e).slice(0, 120)); }
   }
   return out;
 }
