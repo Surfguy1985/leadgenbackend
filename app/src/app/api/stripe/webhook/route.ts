@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { adminDb, audit } from "@/lib/supabase";
 import { env, missingEnv } from "@/lib/env";
+import { isConversion, markConverted } from "@/lib/referrals";
 import { normStatus, payloadHash, planForPrice, shouldApply, type PlanRow } from "@/lib/billing";
 
 export const runtime = "nodejs";
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
         current_period_end: item?.current_period_end ? new Date(item.current_period_end * 1000).toISOString() : null,
         last_event_created: created,
       }, { onConflict: "stripe_subscription_id" });
+      if (!deleted && isConversion(code, normStatus(sub.status))) await markConverted(db, orgId); // referral attribution (idempotent)
     };
     const ledger = async (row: { stripe_object_id: string; kind: string; organization_id: string | null; amount_cents: number; currency: string; occurred_at: string }) => {
       const { error } = await db.from("billing_ledger").insert({ ...row, stripe_event_id: event.id });

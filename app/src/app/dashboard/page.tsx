@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
-import { currentUser } from "@/lib/supabase";
+import { adminDb, currentUser } from "@/lib/supabase";
+import { env } from "@/lib/env";
+import { ensureCode, referralLink, stats } from "@/lib/referrals";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +18,10 @@ export default async function Dashboard() {
     db.from("organizations").select("id,business_name").eq("owner_user_id", user.id).eq("kind", "contractor").limit(1),
   ]);
   if (!orgs?.length) redirect("/onboarding");
+  const myOrg = orgs[0];
+  const refCode = myOrg ? await ensureCode(adminDb(), myOrg.id).catch(() => null) : null;
+  const { data: refRows } = myOrg ? await db.from("referrals").select("status,reward_status").eq("referrer_org_id", myOrg.id) : { data: [] };
+  const rs = stats(refRows ?? []);
   const ids = [...new Set((matches ?? []).map(m => m.opportunity_id))];
   const { data: opps } = ids.length
     ? await db.from("opportunities").select("id,kind,title,trade,city,zip,deadline,status").in("id", ids)
@@ -98,6 +104,12 @@ export default async function Dashboard() {
             })}</div> :
             <div className="cf-dash__empty"><h3>Let's find your next opportunity.</h3><p>You don't have any private matches yet. Start by exploring verified public bids—no payment required. New direct customer matching will launch after verification and notification systems pass testing.</p><a href="https://lead-gen-site-dc4966.webflow.io/opportunities">Explore available public work ↗</a></div>}
         </section>
+        {refCode && <section className="cf-dash__empty" style={{ marginTop: 28 }} aria-labelledby="cf-ref-heading">
+          <h3 id="cf-ref-heading">Refer a contractor</h3>
+          <p>Share your link: <code style={{ overflowWrap: "anywhere" }}>{referralLink(env.appUrl(), refCode)}</code></p>
+          <p>{rs.signups} signed up · {rs.converted} upgraded to paid · {rs.rewardsPending} reward{rs.rewardsPending === 1 ? "" : "s"} pending review</p>
+          <p style={{ fontSize: 12 }}>When someone you refer upgrades to a paid plan, you may earn a free month. Rewards are reviewed by hand before they're applied.</p>
+        </section>}
         <p className="cf-dash__note">Public bids are nonexclusive and subject to the issuing organization's rules and deadlines. Contractor contact access is restricted and permission-based.</p>
       </div>
     </main>

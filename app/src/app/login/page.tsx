@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { safeNext } from "@/lib/safeNext";
 
@@ -9,6 +9,16 @@ export default function Login() {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    const r = new URLSearchParams(window.location.search).get("error");
+    const M: Record<string, string> = {
+      expired: "That sign-in link expired or was already used. Request a new one below.",
+      other_browser: "Open the sign-in link in the same browser you requested it from, or request a new link here.",
+      link_invalid: "That sign-in link isn't valid anymore. Request a new one below.",
+      no_session: "We couldn't finish signing you in. Request a new link below.",
+    };
+    if (r) setError(M[r] ?? M.no_session);
+  }, []);
 
   async function signIn(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,7 +34,7 @@ export default function Login() {
         email: email.trim().toLowerCase(),
         options: { emailRedirectTo: (() => { const n = safeNext(new URLSearchParams(window.location.search).get("next")); return `${window.location.origin}/auth/callback${n ? `?next=${encodeURIComponent(n)}` : ""}`; })() },
       });
-      if (result.error) throw new Error("We couldn't send the sign-in link. Check your address and try again.");
+      if (result.error) throw new Error(result.error.status === 429 || /rate limit|security purposes/i.test(result.error.message) ? "Too many sign-in emails were requested. Wait a minute and try again." : "We couldn't send the sign-in link. Check your address and try again.");
       setSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in is temporarily unavailable.");
@@ -80,7 +90,7 @@ export default function Login() {
         </aside>
         <section className="crew-login__form" aria-labelledby="sign-in-heading">
           <h2 id="sign-in-heading">{sent ? "Check your inbox." : "Welcome back."}</h2>
-          <p>{sent ? "We sent a secure sign-in link if the address is eligible. Open it on this device to continue." : "Sign in or create a free contractor account. No password needed."}</p>
+          <p>{sent ? "We sent a secure sign-in link if the address is eligible. Open it in this same browser to continue." : "Sign in or create a free contractor account. No password needed."}</p>
           {sent ? <div className="crew-login__sent" role="status"><strong>One click to get started.</strong><p>Check your inbox and spam folder. The link expires for your security.</p><button className="crew-login__retry" onClick={() => {setSent(false);setError("");}}>Use another email →</button></div> :
             <form onSubmit={signIn} noValidate={false}>
               <div className="crew-login__field"><label htmlFor="contractor-email">WORK EMAIL</label><input id="contractor-email" type="email" required autoComplete="email" inputMode="email" placeholder="you@yourcompany.com" value={email} onChange={e=>setEmail(e.target.value)}/></div>

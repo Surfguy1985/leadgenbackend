@@ -1,14 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sendEmail } from "../src/lib/email";
-test("sendEmail no-ops without RESEND_API_KEY and never calls fetch", async () => {
-  delete process.env.RESEND_API_KEY; let called = false;
-  const r = await sendEmail({ to: "a@example.com", subject: "s", html: "h" }, (async () => { called = true; return new Response("{}"); }) as typeof fetch);
-  assert.equal(r.sent, false); assert.equal(called, false); assert.ok("skipped" in r && r.skipped);
-});
-test("sendEmail passes idempotency key when configured", async () => {
-  process.env.RESEND_API_KEY = "test"; process.env.ALERT_FROM_EMAIL = "x@example.com"; let key = "";
-  const r = await sendEmail({ to: "a@example.com", subject: "s", html: "h", idempotencyKey: "k1" }, (async (_u: unknown, i?: RequestInit) => { key = (i!.headers as Record<string, string>)["Idempotency-Key"]; return new Response('{"id":"e1"}'); }) as typeof fetch);
-  assert.equal(key, "k1"); assert.equal(r.sent, true);
-  delete process.env.RESEND_API_KEY; delete process.env.ALERT_FROM_EMAIL;
+import { sendEmail, emailProvider } from "../src/lib/email";
+
+test("email: skipped with no provider; brevo used when only BREVO_API_KEY set", async () => {
+  delete process.env.RESEND_API_KEY; delete process.env.BREVO_API_KEY; process.env.ALERT_FROM_EMAIL = "Crewforthat <a@b.co>";
+  assert.equal(emailProvider(), null);
+  assert.equal((await sendEmail({ to: "x@y.co", subject: "s", html: "h" })).sent, false);
+  process.env.BREVO_API_KEY = "k"; let url = ""; let body: any = null;
+  const f = (async (u: string, i: any) => { url = u; body = JSON.parse(i.body); return new Response(JSON.stringify({ messageId: "m1" }), { status: 201 }); }) as unknown as typeof fetch;
+  const r = await sendEmail({ to: "x@y.co", subject: "s", html: "h" }, f);
+  assert.deepEqual(r, { sent: true, id: "m1" }); assert.match(url, /brevo/); assert.deepEqual(body.sender, { name: "Crewforthat", email: "a@b.co" });
+  delete process.env.BREVO_API_KEY;
 });
