@@ -57,7 +57,7 @@ export function reminderEmail(p: { businessName: string; claimUrl: string; unsub
   const subject = p.step === 1 ? `Your business ${p.businessName} is listed on Crewforthat` : `Reminder: claim the free ${p.businessName} profile`;
   const facts = p.lines.length ? `<ul>${p.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : "";
   const html = `<p>Hi,</p><p>${esc(p.businessName)} appears in the Crewforthat business directory, built from public records. You can claim the profile for free to correct details and get bid alerts.</p>${facts}<p><a href="${p.claimUrl}">Claim your free profile</a></p>`
-    + `<hr><p style="font-size:12px;color:#666">This is a one-time business notice from Crewforthat about a public directory listing. We send at most 2 reminders. <a href="${p.unsubUrl}">Unsubscribe</a> and we won't email this address again.<br>Crewforthat · ${esc(p.postal)}</p>`;
+    + `<hr><p style="font-size:12px;color:#666">This is a one-time business notice from Crewforthat about a public directory listing. We send at most 2 reminders. <a href="${p.unsubUrl}">Unsubscribe</a> and we won't email this address again.<br>${/^crewforthat\b/i.test(p.postal) ? "" : "Crewforthat · "}${esc(p.postal)}</p>`;
   return { subject, html };
 }
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));

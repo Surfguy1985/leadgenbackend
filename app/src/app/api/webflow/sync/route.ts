@@ -52,7 +52,8 @@ export async function POST(req: Request) {
   const dir: Sync = { created: 0, updated: 0, removed: 0, errors: 0 };
   if (dirColl) {
     const { data: orgs } = await db.from("organizations")
-      .select("id,business_name,kind,city,zip,public_website,vendor_onboarding_url,claim_status,last_checked_at,slug,is_directory_listed,source_id,public_profile_optin,webflow_item_id,webflow_synced_at,updated_at")
+      .select("id,business_name,kind,city,zip,public_website,vendor_onboarding_url,claim_status,last_checked_at,slug,is_directory_listed,source_id,public_profile_optin,webflow_item_id,webflow_synced_at,updated_at,quality_score")
+      .order("quality_score", { ascending: false, nullsFirst: false })
       .or("is_directory_listed.eq.true,webflow_item_id.not.is.null").limit(500);
     for (const o of (orgs ?? []).filter(r => !r.webflow_synced_at || r.webflow_synced_at < r.updated_at)) {
       try {

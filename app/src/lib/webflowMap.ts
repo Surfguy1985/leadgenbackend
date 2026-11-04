@@ -19,12 +19,14 @@ export function oppFields(o: Opp) {
     "official-apply-url": o.official_apply_url ?? "", "last-checked": o.last_checked_at ?? o.last_verified_at ?? null,
   };
 }
-type Org = { id: string; business_name: string; kind: string; city?: string | null; zip?: string | null; public_website?: string | null; vendor_onboarding_url?: string | null; claim_status: string; last_checked_at?: string | null; slug?: string | null };
+type Org = { id: string; business_name: string; kind: string; city?: string | null; zip?: string | null; public_website?: string | null; vendor_onboarding_url?: string | null; claim_status: string; last_checked_at?: string | null; slug?: string | null; quality_score?: number | null };
+const APP = "https://archangel-leadgen.vercel.app";
 export function orgFields(o: Org) {
   return {
     name: o.business_name.slice(0, 256), slug: o.slug || `${slugify(o.business_name)}-${o.id.slice(0, 6)}`, "detail-url": `${SITE}/directory/${o.slug || `${slugify(o.business_name)}-${o.id.slice(0, 6)}`}`, "organization-id": o.id, kind: o.kind,
     city: o.city ?? "", zip: o.zip ?? "", "public-website": o.public_website ?? "", "vendor-onboarding-url": o.vendor_onboarding_url ?? "",
     "claim-status": o.claim_status, "last-checked": o.last_checked_at ?? null,
+    "quality-score": o.quality_score ?? 0, "claim-url": `${APP}/claim/${o.id}?utm_source=webflow&utm_medium=directory`,
   };
 }
 export const isDirectoryPublic = (o: { is_directory_listed: boolean; source_id: string | null; public_profile_optin: boolean }, sourcePublishOk: boolean) =>
