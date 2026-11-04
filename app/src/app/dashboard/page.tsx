@@ -65,7 +65,7 @@ export default async function Dashboard() {
       <header className="cf-dash__nav">
         <a className="cf-dash__brand" href="https://lead-gen-site-dc4966.webflow.io/">crew<span>for</span>that.</a>
         <nav className="cf-dash__nav-links" aria-label="Contractor navigation">
-          <a href="/app">Discover jobs</a>
+          <a href="/app">Find work</a><a href="/app/pipeline">My next steps</a>
           <a href="/app/saved">Saved</a>
           <a href="/app/settings">Alerts &amp; settings</a>
           <a href="/onboarding">Profile</a>
