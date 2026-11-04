@@ -20,10 +20,10 @@ export function parseBid(html: string): CivicBid {
 }
 /** Trade from title/category/description keywords. null => out of scope (not construction/property services). */
 export function bidTrade(b: Pick<CivicBid, "title" | "category" | "description">): string | null {
-  const s = `${b.title ?? ""} ${b.category ?? ""} ${b.description ?? ""}`;
+  const s = `${b.title ?? ""} ${b.category ?? ""}`; // title + category only: descriptions mention parks/buildings incidentally
   if (/landscap|mowing|tree|irrigat|turf|grounds/i.test(s)) return "landscaping";
   if (/janitor|custodial|cleaning/i.test(s)) return "cleaning";
   if (/roof|hvac|plumb|electric|paint|flooring|repair|renovat|remodel|cottage|restroom|pavilion/i.test(s)) return "residential_repair";
-  if (/construct|sewer|water line|waterline|paving|pavement|street|road|drainage|bridge|concrete|interceptor|utility|facility|building|demolition|sidewalk|park|trail|public works|capital improvement/i.test(s)) return "commercial_construction";
+  if (/construct|sewer|water line|waterline|paving|pavement|street|road|drainage|bridge|concrete|interceptor|utility|facility|building|demolition|sidewalk|park improvement|trail|capital improvement/i.test(s)) return "commercial_construction";
   return null;
 }

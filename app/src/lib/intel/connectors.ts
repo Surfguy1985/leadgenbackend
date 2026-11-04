@@ -117,14 +117,15 @@ export async function civicplusBids(ctx: Ctx): Promise<Candidate[]> {
   const city = agency.replace(/^(City|Town) of\s+/i, "").trim();
   const list = await fcScrape(`${base}/Bids.aspx`); if (list.status !== 200) throw new Error(`list_http_${list.status}`);
   const out: Candidate[] = [];
-  for (const id of listBidIds(list.html).slice(0, Math.min(ctx.limit, 25))) {
+  for (const [i, id] of listBidIds(list.html).slice(0, Math.min(ctx.limit, 25)).entries()) {
+    if (i) await new Promise(r => setTimeout(r, 10_000)); // robots.txt Crawl-delay: 10 (per host)
     const url = `${base}/Bids.aspx?bidID=${id}`;
     const d = await fcScrape(url).catch(() => null); if (!d) continue;
     const b = parseBid(d.html); const trade = bidTrade(b); if (!trade) continue; // out of scope (e.g. IT, vehicles)
     const deadline = parseClose(b.closes); const open = /^open$/i.test(b.status ?? "");
     out.push({ external_id: `civicplus:${new URL(base).hostname}:${id}`, record_type: "job", label: classify("solicitation", { open }), personal: false,
       fields: { title: b.title, buyer: agency, location: city, city, trade, deadline, official_url: url, bid_number: b.bid_number, category: b.category, status: b.status, published: b.published, closes_raw: b.closes, description: b.description },
-      checks: [{ name: "source_url_resolves", ok: d.status === 200, detail: String(d.status) }, { name: "status_open", ok: open, detail: b.status ?? undefined }, { name: "bid_number_present", ok: !!b.bid_number }],
+      checks: [{ name: "source_url_resolves", ok: d.status === 200, detail: String(d.status) }, { name: "status_open", ok: open, detail: b.status ?? undefined }, { name: "bid_number_present", ok: b.bid_number ? true : null }],
       sources: ["civicplus_bids"], status: open ? "open" : b.status, deadline, trade });
   }
   return out;
