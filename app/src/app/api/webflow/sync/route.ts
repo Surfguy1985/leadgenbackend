@@ -7,7 +7,8 @@ import { oppFields, orgFields, isDirectoryPublic } from "@/lib/webflowMap";
 export const runtime = "nodejs";
 const WF = "https://api.webflow.com/v2";
 
-type Sync = { created: number; updated: number; removed: number; errors: number };
+type Sync = { created: number; updated: number; removed: number; errors: number; sample?: string };
+export const maxDuration = 300;
 async function upsertLive(coll: string, h: Record<string, string>, itemId: string | null, isLive: boolean, fieldData: object, s: Sync): Promise<{ ok: boolean; itemId: string | null; stop?: boolean }> {
   let res: Response | null = null;
   // STAGED items only (go live on the next site publish, which is a human decision). Never the /live endpoints.
@@ -15,7 +16,7 @@ async function upsertLive(coll: string, h: Record<string, string>, itemId: strin
   else if (isLive && itemId) { res = await fetch(`${WF}/collections/${coll}/items/${itemId}`, { method: "PATCH", headers: h, body: JSON.stringify({ isDraft: false, isArchived: false, fieldData }) }); if (res.ok) s.updated++; }
   else if (!isLive && itemId) { await fetch(`${WF}/collections/${coll}/items/${itemId}/live`, { method: "DELETE", headers: h }); // unpublish if it was ever live
     res = await fetch(`${WF}/collections/${coll}/items/${itemId}`, { method: "DELETE", headers: h }); if (res.ok || res.status === 404) { s.removed++; itemId = null; } }
-  if (res && !res.ok && res.status !== 404) { s.errors++; return { ok: false, itemId, stop: res.status === 429 }; }
+  if (res && !res.ok && res.status !== 404) { s.errors++; if (!s.sample) s.sample = `${res.status} ${(await res.text().catch(() => "")).slice(0, 300)}`; return { ok: false, itemId, stop: res.status === 429 }; }
   return { ok: true, itemId };
 }
 
