@@ -37,7 +37,7 @@ export type Candidate = Contractor & { id: string; owner_user_id: string | null;
 export function pickMatches(o: Opp & { kind: "private_lead" | "public_bid" }, cs: Candidate[], now = Date.now()) {
   const ranked = cs.flatMap(c => {
     if (!c.owner_user_id || c.alerts_left <= 0) return [];
-    if (o.kind === "private_lead" && !c.paid) return [];
+    if (o.kind !== "public_bid" && !c.paid) return []; // free plans: public bids only (private leads + prospects/forecasts are paid)
     const s = score(o, c, now, o.kind === "public_bid");
     return s.eligible ? [{ contractor_id: c.id, owner_user_id: c.owner_user_id, score: s.score, factors: s.factors, priority: !!c.priority && c.paid }] : [];
   });

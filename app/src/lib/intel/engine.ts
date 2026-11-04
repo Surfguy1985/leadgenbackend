@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadPolicy, withIngestionRun } from "@/lib/fetcher";
 import { evaluate, isDue } from "./evaluate";
 export { evaluate, isDue };
+import { promote } from "./promote";
 import { CONNECTORS, franchiseLookup, type Candidate, type Ctx } from "./connectors";
 
 export async function threshold(db: SupabaseClient) {
@@ -18,7 +19,7 @@ export async function runSource(db: SupabaseClient, src: any, opts: { force?: bo
   await db.from("sources").update({ last_attempt_at: new Date().toISOString() }).eq("id", src.id);
   const th = await threshold(db); const fetchedAt = new Date().toISOString();
   const { data: ft } = await db.from("sources").select("id").eq("connector", "franchise_tax").eq("enabled", true).maybeSingle();
-  const tally = { fetched: 0, published: 0, review: 0, orgs_upserted: 0, dry_run: !!src.dry_run, gates: {} as Record<string, number>, buckets: [0, 0, 0, 0, 0] };
+  const tally = { fetched: 0, published: 0, review: 0, orgs_upserted: 0, opps_upserted: 0, dry_run: !!src.dry_run, gates: {} as Record<string, number>, buckets: [0, 0, 0, 0, 0] };
   const run = await withIngestionRun(src.id, async () => {
     const policy = await loadPolicy(src.id);
     const ctx: Ctx = { sourceId: src.id, policy, fetchedAt, limit: opts.limit ?? 2000, lookups: {} };
@@ -33,6 +34,10 @@ export async function runSource(db: SupabaseClient, src: any, opts: { force?: bo
       if (src.dry_run) continue;
       const prov = Object.fromEntries(Object.keys(c.fields).map(k => [k, { source: c.sources.includes("tx_franchise_tax") && ["city", "zip", "taxpayer_number", "active_status", "legal_name"].includes(k) ? "tx_franchise_tax" : src.connector, fetched_at: fetchedAt }]));
       const { data: rec }: { data: any } = await db.from("intel_records").upsert({ source_id: src.id, external_id: c.external_id, record_type: c.record_type, label: c.label, fields: c.fields, provenance: prov, score: e.score, score_breakdown: e.breakdown, gate_failures: e.gates, status: e.status, contains_personal_data: c.personal, fetched_at: fetchedAt, updated_at: fetchedAt }, { onConflict: "source_id,external_id" }).select("id,status,organization_id").single();
+      if (rec?.status === "published" && e.score >= th && !c.personal && src.allowed_public_display) {
+        const p = promote(c);
+        if (p) { const { error } = await db.from("opportunities").upsert({ ...p, source_id: src.id, rights_id: src.current_rights_id, status: "published", visibility: "public", verification_status: "verified", quality_score: e.score, score_breakdown: e.breakdown, published_at: fetchedAt, last_verified_at: fetchedAt, last_checked_at: fetchedAt, updated_at: fetchedAt }, { onConflict: "source_id,source_record_id" }); if (!error) tally.opps_upserted++; }
+      }
       if (rec && c.record_type === "contractor" && !c.personal) { const id = await resolveOrg(db, src, c, e, rec.status === "published"); if (id) { tally.orgs_upserted++; if (!rec.organization_id) await db.from("intel_records").update({ organization_id: id }).eq("id", rec.id); } }
     }
     return { new_count: tally.fetched };
@@ -61,9 +66,9 @@ async function resolveOrg(db: SupabaseClient, src: any, c: Candidate, e: { score
 }
 
 /** Cron entry: every approved+enabled source whose schedule is due. */
-export async function runDueSources(db: SupabaseClient, opts: { force?: boolean; only?: string } = {}) {
+export async function runDueSources(db: SupabaseClient, opts: { force?: boolean; only?: string; limit?: number } = {}) {
   let q = db.from("sources").select("*").not("connector", "is", null).neq("connector", "franchise_tax"); if (opts.only) q = q.eq("id", opts.only);
   const { data } = await q; const out = [];
-  for (const s of data ?? []) out.push(await runSource(db, s, { force: opts.force }).catch(e => ({ source: s.name, error: String(e).slice(0, 200) })));
+  for (const s of data ?? []) out.push(await runSource(db, s, { force: opts.force, limit: opts.limit }).catch(e => ({ source: s.name, error: String(e).slice(0, 200) })));
   return out;
 }

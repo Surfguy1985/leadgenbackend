@@ -9,5 +9,5 @@ export const maxDuration = 300;
 export async function GET(req: Request) {
   const cs = process.env.CRON_SECRET;
   if (!cs || !safeEqual(req.headers.get("authorization") ?? "", `Bearer ${cs}`)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  return NextResponse.json({ runs: await runDueSources(adminDb()) });
+  return NextResponse.json({ runs: await runDueSources(adminDb(), { limit: Math.min(2000, Math.max(1, Number(new URL(req.url).searchParams.get("limit")) || 2000)) }) });
 }
