@@ -43,16 +43,16 @@ export default function SavedPage() {
       @media(max-width:750px){.cfsaved__grid{grid-template-columns:1fr}.cfsaved__card{padding:24px}.cfsaved__empty{padding:29px}}
     `}</style>
     <nav className="cfsaved__nav"><a href="https://lead-gen-site-dc4966.webflow.io/" className="cfsaved__brand">crew<span>for</span>that.</a><a className="cfsaved__back" href="/dashboard">← Contractor dashboard</a></nav>
-    <div className="cfsaved__main"><header className="cfsaved__hero"><span className="cfsaved__tag">YOUR OPPORTUNITY SHORTLIST</span><h1>Saved work.</h1><p>Keep promising public bids in one place. Always confirm deadlines, changes and requirements with the official source.</p></header>
+    <div className="cfsaved__main"><header className="cfsaved__hero"><span className="cfsaved__tag">YOUR OPPORTUNITY SHORTLIST</span><h1>Your shortlist.</h1><p>Found something promising? Pick the next step. Keep it simple.</p></header>
       {message && <p role="alert">{message}</p>}
       {loading ? <p role="status">Loading saved opportunities…</p> : items.length ?
         <div className="cfsaved__grid">{items.map(item => <article className="cfsaved__card" key={item.id}>
           <span className="cfsaved__chip">{item.opportunity.tab === "jobs_now" ? "PUBLIC OPPORTUNITY" : "OFFICIAL NOTICE"}</span>
           <h2>{item.opportunity.title}</h2><div className="cfsaved__meta">{[item.opportunity.trade,item.opportunity.city,item.opportunity.zip].filter(Boolean).join(" · ")} {item.opportunity.deadline ? " · Deadline " + new Date(item.opportunity.deadline).toLocaleDateString("en-US") : " · Confirm deadline with the source"}</div>
           {item.note && <p>{item.note}</p>}
-          <div className="cfsaved__actions"><a className="cfsaved__apply" href={item.opportunity.official_apply_url || item.opportunity.source_url || "https://lead-gen-site-dc4966.webflow.io/opportunities"} target="_blank" rel="noopener noreferrer">Official source ↗</a><button className="cfsaved__remove" onClick={()=>void remove(item.id)}>Remove</button></div>
+          <div className="cfsaved__actions"><a className="cfsaved__apply" href="/app/pipeline">Plan next step →</a><a className="cfsaved__remove" href={"/app/opportunity/"+encodeURIComponent(item.opportunity_id)} style={{textDecoration:"none"}}>Review details</a><button className="cfsaved__remove" onClick={()=>void remove(item.id)}>Remove</button></div>
         </article>)}</div> :
-        <section className="cfsaved__empty"><h2>Nothing saved yet.</h2><p>Explore public bids and keep a shortlist of the ones worth pursuing.</p><a href="https://lead-gen-site-dc4966.webflow.io/opportunities">Browse open opportunities ↗</a></section>}
+        <section className="cfsaved__empty"><h2>No saved jobs yet.</h2><p>Step 1: Find a job. Step 2: Tap Save. Step 3: Plan your next action.</p><a href="https://lead-gen-site-dc4966.webflow.io/opportunities">Browse open opportunities ↗</a></section>}
     </div>
   </main>;
 }
