@@ -10,6 +10,9 @@ export default function ContractorFeed() {
   const [tab,setTab] = useState<"jobs_now"|"upcoming"|"buyers">("jobs_now");
   const [query,setQuery] = useState("");
   const [trade,setTrade] = useState("");
+  const [zip,setZip] = useState("");
+  const [savingSearch,setSavingSearch] = useState(false);
+  const [searchNotice,setSearchNotice] = useState("");
   const [loading,setLoading] = useState(true);
   const [busy,setBusy] = useState<string|null>(null);
   const [error,setError] = useState("");
@@ -31,9 +34,30 @@ export default function ContractorFeed() {
   },[tab]);
   const filtered=useMemo(()=>items.filter(i=>
     (!query||[i.title,i.summary,i.city,i.trade,i.zip].filter(Boolean).join(" ").toLowerCase().includes(query.toLowerCase().trim()))&&
-    (!trade||i.trade===trade)
-  ),[items,query,trade]);
+    (!trade||i.trade===trade)&&(!zip||(i.zip||"").startsWith(zip))
+  ),[items,query,trade,zip]);
   const trades=useMemo(()=>[...new Set(items.map(i=>i.trade))].sort(),[items]);
+  async function saveSearch() {
+    if (savingSearch) return;
+    setSavingSearch(true); setSearchNotice("");
+    const name = [tab==="jobs_now"?"Jobs Now":tab==="upcoming"?"Future Contracts":"Find Buyers",trade.replaceAll("_"," "),zip,query].filter(Boolean).join(" · ").slice(0,80);
+    try {
+      const r=await fetch("/api/contractor/searches",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({label:name||"Public work",tab,query,trade:trade||null,zip:zip||null})});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok)throw Error(j.message||"This search couldn't be saved.");
+      setSearchNotice("Search saved. View it in Saved Searches.");
+    }catch(e){setSearchNotice(e instanceof Error?e.message:"Unable to save search.");}
+    finally{setSavingSearch(false)}
+  }
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const t=params.get("tab");
+    if(t==="jobs_now"||t==="upcoming"||t==="buyers")setTab(t);
+    setQuery((params.get("query")||"").slice(0,160));
+    setZip(/^\d{0,5}$/.test(params.get("zip")||"")?(params.get("zip")||""):"");
+    setTrade((params.get("trade")||"").slice(0,80));
+  },[]);
   async function toggle(i:Opportunity) {
     if(busy)return;setBusy(i.id);setError("");
     try {
@@ -61,7 +85,7 @@ export default function ContractorFeed() {
     .cf-feed__tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .cf-feed__tab{border:1px solid #E8E4EE;border-radius:100px;background:#F8F6FA;color:#655C76;font-size:12px;font-weight:800;padding:13px 18px;cursor:pointer}
     .cf-feed__tab[aria-selected="true"]{background:#28243E;color:#fff;border-color:#28243E}
-    .cf-feed__search{grid-column:1/-1;display:grid;grid-template-columns:1fr minmax(150px,.32fr);gap:12px}
+    .cf-feed__search{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(140px,.45fr) minmax(110px,.27fr);gap:12px}.cf-feed__save-search{grid-column:1/-1;display:flex;gap:15px;align-items:center;flex-wrap:wrap}.cf-feed__save-search button{border:0;border-radius:100px;background:#29233F;color:#fff;padding:12px 20px;font-size:12px;font-weight:850;cursor:pointer}.cf-feed__save-search span{font-size:12px;color:#6F6286}
     .cf-feed__search input,.cf-feed__search select{height:48px;border-radius:13px;border:1px solid #E4DEED;padding:0 15px;background:#FCFAFD;color:#28243E;font-size:14px;min-width:0;width:100%}
     .cf-feed__counter{font-size:12px;font-weight:800;color:#7C748C;text-align:right;align-self:center}
     .cf-feed__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
@@ -82,14 +106,14 @@ export default function ContractorFeed() {
     @media(max-width:800px){.cf-feed__grid{grid-template-columns:1fr}.cf-feed__filters{grid-template-columns:1fr}.cf-feed__counter{text-align:left}.cf-feed__search{grid-template-columns:1fr}}
     @media(max-width:480px){.cf-feed__hero{padding:29px 25px;border-radius:25px}.cf-feed__card{padding:23px}.cf-feed__actions>*{flex:1;text-align:center;justify-content:center}.cf-feed__navlinks a{font-size:11px}}
   `}</style>
-  <nav className="cf-feed__nav"><a href="https://lead-gen-site-dc4966.webflow.io/" className="cf-feed__brand">crew<span>for</span>that.</a><div className="cf-feed__navlinks"><a href="/dashboard">Dashboard</a><a href="/app/saved">Saved</a><a href="/app/settings">Settings</a></div></nav>
+  <nav className="cf-feed__nav"><a href="https://lead-gen-site-dc4966.webflow.io/" className="cf-feed__brand">crew<span>for</span>that.</a><div className="cf-feed__navlinks"><a href="/dashboard">Dashboard</a><a href="/app/saved">Saved jobs</a><a href="/app/searches">Saved searches</a><a href="/app/settings">Settings</a></div></nav>
   <div className="cf-feed__main"><header className="cf-feed__hero"><span className="cf-feed__eyebrow">YOUR OPPORTUNITY DISCOVERY</span><h1>Find work <span>your way.</span></h1><p>Search official public opportunities, save promising bids, and build a shortlist. All applications go to the original issuing organization.</p></header>
     <section className="cf-feed__filters" aria-label="Opportunity filters">
       <div className="cf-feed__tabs" role="tablist" aria-label="Opportunity category">
         {([["jobs_now","Jobs Now"],["upcoming","Future Contracts"],["buyers","Find Buyers"]] as const).map(([value,label])=><button type="button" role="tab" aria-selected={tab===value} className="cf-feed__tab" key={value} onClick={()=>setTab(value)}>{label}</button>)}
       </div>
       <span className="cf-feed__counter" aria-live="polite">{filtered.length} approved records</span>
-      <div className="cf-feed__search"><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search projects, trades, or cities" aria-label="Search opportunities"/><select aria-label="Filter by trade" value={trade} onChange={e=>setTrade(e.target.value)}><option value="">All trades</option>{trades.map(t=><option key={t} value={t}>{t.replaceAll("_"," ")}</option>)}</select></div>
+      <div className="cf-feed__search"><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search projects, trades, or cities" aria-label="Search opportunities"/><select aria-label="Filter by trade" value={trade} onChange={e=>setTrade(e.target.value)}><option value="">All trades</option>{trades.map(t=><option key={t} value={t}>{t.replaceAll("_"," ")}</option>)}</select><input inputMode="numeric" value={zip} onChange={e=>setZip(e.target.value.replace(/\D/g,"").slice(0,5))} aria-label="Filter by five digit ZIP" placeholder="ZIP code" maxLength={5}/></div><div className="cf-feed__save-search"><button type="button" onClick={()=>void saveSearch()} disabled={savingSearch}>{savingSearch?"Saving search…":"Save these filters ☆"}</button><span role="status">{searchNotice}</span></div>
     </section>
     {error&&<p className="cf-feed__error" role="alert">{error}</p>}
     {loading?<p role="status">Loading official opportunities…</p>:filtered.length?
@@ -99,7 +123,7 @@ export default function ContractorFeed() {
         <div className="cf-feed__details">Trade: {item.trade.replaceAll("_"," ")} · {item.deadline?"Deadline "+new Date(item.deadline).toLocaleDateString("en-US"):"Confirm deadline with the official source"}</div>
         <div className="cf-feed__actions"><a className="cf-feed__apply" href={item.official_apply_url||item.source_url||"#"} target="_blank" rel="noopener noreferrer">Official notice ↗</a><button type="button" className="cf-feed__save" disabled={busy===item.id} aria-pressed={!!saved[item.id]} onClick={()=>void toggle(item)}>{busy===item.id?"Saving…":saved[item.id]?"★ Saved":"☆ Save"}</button><a className="cf-feed__report" href={"/report-listing?id="+encodeURIComponent(item.id)}>Report issue</a></div>
       </article>)}</div>:
-      <section className="cf-feed__empty"><h2>No verified opportunities match right now.</h2><p>Try a broader trade or location. We don't add placeholder job listings or invent open contracts.</p><button className="cf-feed__save" onClick={()=>{setQuery("");setTrade("")}}>Clear filters</button></section>}
+      <section className="cf-feed__empty"><h2>No verified opportunities match right now.</h2><p>Try a broader trade or location. We don't add placeholder job listings or invent open contracts.</p><button className="cf-feed__save" onClick={()=>{setQuery("");setTrade("");setZip("")}}>Clear filters</button></section>}
     <p className="cf-feed__footnote">Public bids do not guarantee work. Source deadlines, changes, eligibility and official application requirements always take priority.</p>
   </div></main>;
 }
