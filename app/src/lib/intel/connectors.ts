@@ -58,8 +58,8 @@ export async function tdlr(ctx: Ctx, offset = 0): Promise<Candidate[]> {
 }
 
 /** Franchise tax lookup (verification only). Prefix match on normalised name within DFW county codes; requires right-to-transact 'A'. */
-export function franchiseLookup(ctx: Ctx): (name: string, county?: string) => Promise<FranchiseHit | null> {
-  let budget = 60; // per run; the rest stay "unchecked" and are retried next run
+export function franchiseLookup(ctx: Ctx, max = 60): (name: string, county?: string) => Promise<FranchiseHit | null> {
+  let budget = max; // per run; the rest stay "unchecked" and are retried next run
   return async (name, county) => {
     if (budget-- <= 0) return null;
     const base = entityKey(name, "").split("|")[0].replace(/'/g, "''"); if (base.length < 4) return null;

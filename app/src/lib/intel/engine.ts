@@ -68,7 +68,7 @@ export async function resolveOrg(db: SupabaseClient, src: any, c: Candidate, e: 
 /** Cron entry: every approved+enabled source whose schedule is due. */
 export async function runDueSources(db: SupabaseClient, opts: { force?: boolean; only?: string; limit?: number; connector?: string; parallel?: boolean } = {}) {
   let q = db.from("sources").select("*").not("connector", "is", null).neq("connector", "franchise_tax"); if (opts.only) q = q.eq("id", opts.only);
-  q = opts.connector ? q.eq("connector", opts.connector) : q.neq("connector", "civicplus_bids"); // Firecrawl portals run in /api/cron/firecrawl
+  q = opts.connector ? q.eq("connector", opts.connector) : q.not("connector", "in", "(civicplus_bids,usaspending)"); // own crons: /api/cron/firecrawl, /api/cron/usaspending
   const { data } = await q;
   if (opts.parallel) return Promise.all((data ?? []).map(s => runSource(db, s, { force: opts.force, limit: opts.limit }).catch(e => ({ source: s.name, error: String(e).slice(0, 200) }))));
   const out = [];
