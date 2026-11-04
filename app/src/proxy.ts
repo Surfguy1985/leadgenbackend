@@ -54,5 +54,5 @@ function keepRef(req: NextRequest, res: NextResponse) {
 }
 
 export const config = {
-  matcher: ["/", "/login", "/dashboard/:path*", "/onboarding/:path*", "/auth/:path*", "/api/contractor/:path*"],
+  matcher: ["/", "/login", "/claim/:path*", "/dashboard/:path*", "/onboarding/:path*", "/auth/:path*", "/api/contractor/:path*"],
 };

@@ -1,10 +1,12 @@
 "use client";
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 
 function ClaimForm() {
   const q=useSearchParams();
   const [id,setId]=useState(q.get("id")??"");
+  // A directory card link with ?id= goes straight to the full claim flow (domain-email code or proof review).
+  useEffect(()=>{const v=q.get("id");if(v&&/^[0-9a-fA-F-]{36}$/.test(v))window.location.replace(`/claim/${v}`);},[q]);
   const [note,setNote]=useState("");
   const [website,setWebsite]=useState("");
   const [agree,setAgree]=useState(false);

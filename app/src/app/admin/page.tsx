@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { matchAndNotify } from "@/lib/workflows";
+import { approveClaim, rollbackClaim } from "@/lib/claims";
 import { adminDb, audit, requireRole, adminAction, type AdminRole } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,28 @@ async function toggleSource(formData: FormData) {
   revalidatePath("/admin");
 }
 
+async function decideClaim(formData: FormData) {
+  "use server";
+  const admin = await requireRole(["owner", "content_admin", "support_agent"]); if (!admin) throw new Error("forbidden");
+  const id = String(formData.get("id")); const decision = String(formData.get("decision")); const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 5) throw new Error("reason required");
+  const db = adminDb();
+  if (decision === "approve") await approveClaim(db, id, admin.user.id, reason);
+  else if (decision === "rollback") await rollbackClaim(db, id, admin.user.id, reason);
+  else if (decision === "deny") {
+    await db.from("profile_claims").update({ status: "rejected", reviewed_by: admin.user.id, decided_at: new Date().toISOString(), decision_reason: reason }).eq("id", id);
+    await audit(admin.user.id, "profile_claim_rejected", "profile_claim", id, { reason });
+  } else throw new Error("bad decision");
+  await adminAction(admin.user.id, `claim_${decision}`, "profile_claim", id, reason);
+  revalidatePath("/admin");
+}
+
+async function proofLink(path: string | null) {
+  if (!path) return null;
+  const { data } = await adminDb().storage.from("claim-proofs").createSignedUrl(path, 600);
+  return data?.signedUrl ?? null;
+}
+
 const ct = (t: string) => new Date(t).toLocaleString("en-US", { timeZone: "America/Chicago" }) + " CT";
 const can = (roles: Set<AdminRole>, r: AdminRole[]) => r.some(x => roles.has(x));
 
@@ -64,6 +87,8 @@ export default async function Admin() {
     can(R, ["owner", "auditor_readonly"]) ? db.from("admin_actions").select("actor,action,object_type,object_id,reason,created_at").order("created_at", { ascending: false }).limit(30) : none,
     can(R, ["owner", "auditor_readonly"]) ? db.from("ai_usage").select("function_name,ok,cost_usd,created_at").order("created_at", { ascending: false }).limit(200) : none,
   ]);
+  const { data: claims } = writeMod ? await db.from("profile_claims").select("id,organization_id,claimant_user_id,method,claim_email,status,evidence,proof_path,attempts,created_at,organizations(business_name,public_website,website,owner_user_id)").in("status", ["pending", "disputed", "challenge_sent", "approved"]).order("created_at", { ascending: false }).limit(50) : { data: null };
+  const claimRows = await Promise.all((claims ?? []).map(async c => ({ ...c, proof: await proofLink(c.proof_path) })));
   const aiCost = (ai ?? []).reduce((a, r) => a + Number(r.cost_usd ?? 0), 0); const aiFail = (ai ?? []).filter(r => !r.ok).length;
   return (
     <main style={{ fontFamily: "system-ui", maxWidth: 1100, margin: "0 auto", padding: 16 }}>
@@ -77,6 +102,16 @@ export default async function Admin() {
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{JSON.stringify(q.details, null, 1).slice(0, 800)}</pre>
           {writeMod && <><input name="reason" placeholder="note (optional)" /> <button name="decision" value="approved">Approve</button> <button name="decision" value="rejected">Reject</button></>}
         </form>))}
+      {writeMod && <><h2>Business claims ({claimRows.filter(c => c.status !== "approved").length} open)</h2>
+      {claimRows.map(c => { const o = (Array.isArray(c.organizations) ? c.organizations[0] : c.organizations) as Record<string, any> | null; return (
+        <form key={c.id} action={decideClaim} style={{ borderBottom: "1px solid #ddd", padding: 8 }}>
+          <input type="hidden" name="id" value={c.id} />
+          <b>[{c.status}] {o?.business_name ?? c.organization_id}</b> · {c.method}{c.claim_email ? ` (${c.claim_email})` : ""} · site {o?.public_website || o?.website || "—"} · {o?.owner_user_id ? "currently owned" : "unclaimed"} · {ct(c.created_at)}
+          <div style={{ fontSize: 13 }}>{String((c.evidence as any)?.user_statement ?? "").slice(0, 600)} {c.proof && <a href={c.proof} target="_blank" rel="noopener">View proof (10 min link)</a>}</div>
+          <input name="reason" required minLength={5} placeholder="decision reason (required)" />{" "}
+          {c.status === "approved" ? <button name="decision" value="rollback">Roll back ownership</button>
+            : <><button name="decision" value="approve">Approve &amp; transfer</button> <button name="decision" value="deny">Deny</button></>}
+        </form>); })}</>}
       <h2>Workflow failures / dead letters</h2>
       <ul>{(failures ?? []).map(f => <li key={f.id}>{f.workflow}/{f.node}: {f.state} ({f.attempts}) — {String(f.error ?? "").slice(0, 120)}</li>)}</ul></>}
       {content && <><h2>Sources</h2>
