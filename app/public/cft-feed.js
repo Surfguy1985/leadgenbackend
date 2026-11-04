@@ -11,8 +11,10 @@
   function a(cls, href, text, ext) { var n = el("a", cls, text); n.href = href; if (ext) { n.target = "_blank"; n.rel = "noopener nofollow"; } return n; }
   function fmt(d) { if (!d) return null; var t = Date.parse(d); return isFinite(t) ? new Date(t).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : null; }
   function init() {
+    if (cfg.dir) { var h1 = document.querySelector("h1"); if (h1) h1.textContent = "Contractor directory"; var hp = h1 && h1.parentNode.querySelector("p"); if (hp) hp.textContent = "DFW contractors verified from official Texas sources. Own one of these businesses? Claim it free."; }
     var section = document.querySelector(".ol-list");
     if (!section) { section = el("section", "ol-list"); section.id = "approved-jobs"; (document.querySelector("main") || document.body).appendChild(section); }
+    if (cfg.dir) { var h2 = section.querySelector("h2"); if (h2) h2.textContent = "Verified contractors"; }
     var wrap = section.querySelector(".w-dyn-list"); if (!wrap) { wrap = el("div", "w-dyn-list"); section.appendChild(wrap); }
     var cms = wrap.querySelector(".w-dyn-items, .w-dyn-empty");
     var list = el("div", "w-dyn-items cft-feed-items"); list.setAttribute("role", "list"); list.setAttribute("aria-live", "polite");
