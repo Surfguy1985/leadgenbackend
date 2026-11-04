@@ -95,12 +95,17 @@ export async function matchAndNotify(oppId: string): Promise<boolean> {
       if (!o || o.status !== "published") return { result: "not_published" };
       const { data: rows } = await db.from("contractor_profiles").select("*,organizations(owner_user_id,subscriptions(plan,status))").contains("trades", [o.trade]).eq("accepts_leads", true);
       const since = new Date(); since.setUTCHours(0, 0, 0, 0);
+      // Private leads remain paid-only by default. A tightly controlled, server-side
+      // allowlist permits known contractor organizations in the closed pilot without
+      // publishing checkout or allowing users to self-assign a pilot entitlement.
+      const pilotOrgIds = new Set((process.env.PILOT_CONTRACTOR_ORG_IDS ?? "")
+        .split(",").map(x => x.trim()).filter(x => /^[0-9a-f-]{36}$/i.test(x)));
       const cands: Candidate[] = [];
       for (const c of rows ?? []) {
         const owner = c.organizations?.owner_user_id ?? null; const subs = c.organizations?.subscriptions ?? [];
         let sentToday = 0;
         if (owner) { const { count } = await db.from("notifications").select("id", { count: "exact", head: true }).eq("recipient_id", owner).gte("created_at", since.toISOString()); sentToday = count ?? 0; }
-        cands.push({ ...c, owner_user_id: owner, paid: subs.some((s: { status: string }) => ["active", "trialing"].includes(s.status)), alerts_left: (c.max_alerts_daily ?? 10) - sentToday });
+        cands.push({ ...c, owner_user_id: owner, paid: subs.some((s: { status: string }) => ["active", "trialing"].includes(s.status)) || pilotOrgIds.has(c.organization_id), alerts_left: (c.max_alerts_daily ?? 10) - sentToday });
       }
       const { picks, underMinTarget } = pickMatches({ ...o, subtrades: o.subtrades ?? [] }, cands);
       let emailed = 0, queued = 0;
